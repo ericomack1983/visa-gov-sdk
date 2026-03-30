@@ -7,6 +7,7 @@ import {
   ScoringWeights,
   EvaluationResult,
 } from '../types';
+import { VisaNetworkService } from './VisaNetworkService';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SupplierMatcher — AI-powered supplier scoring and ranking engine
@@ -14,6 +15,9 @@ import {
 // Scores suppliers across six weighted dimensions:
 //   price (25%), delivery (20%), reliability (20%), compliance (15%),
 //   risk (10%), vaa — Visa Advanced Authorization Score (10%)
+//
+// The VAA dimension can be automatically populated from the Visa Supplier
+// Match Service (SMS) API by injecting a VisaNetworkService instance.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const DEFAULT_WEIGHTS: ScoringWeights = {
@@ -70,18 +74,40 @@ function computeComposite(dimensions: DimensionScores, weights: ScoringWeights):
  *
  * // With custom weights (e.g. price-heavy procurement)
  * const priceFocused = SupplierMatcher.withWeights({ price: 0.45, delivery: 0.15, vaa: 0.05 });
+ *
+ * // With Visa network registry checks (VAA score sourced live from Visa)
+ * const matcher = new SupplierMatcher({
+ *   visaNetwork: VisaNetworkService.sandbox(),
+ * });
+ * const result = await matcher.evaluateWithVisaCheck({ rfp, bids, suppliers, countryCode: 'US' });
  * ```
  */
 export class SupplierMatcher {
   private readonly weights: ScoringWeights;
+  private readonly visaNetwork: VisaNetworkService | null;
 
-  constructor(weights: ScoringWeights = DEFAULT_WEIGHTS) {
-    this.weights = this.normalise(weights);
+  constructor(options: ScoringWeights | { weights?: Partial<ScoringWeights>; visaNetwork?: VisaNetworkService } = DEFAULT_WEIGHTS) {
+    // Support both legacy `new SupplierMatcher(weights)` and new options object
+    if (this.isWeights(options)) {
+      this.weights     = this.normalise(options);
+      this.visaNetwork = null;
+    } else {
+      this.weights     = this.normalise({ ...DEFAULT_WEIGHTS, ...(options.weights ?? {}) });
+      this.visaNetwork = options.visaNetwork ?? null;
+    }
   }
 
   /** Create a SupplierMatcher with custom dimension weights (auto-normalised to sum 1.0). */
   static withWeights(partial: Partial<ScoringWeights>): SupplierMatcher {
-    return new SupplierMatcher({ ...DEFAULT_WEIGHTS, ...partial });
+    return new SupplierMatcher({ weights: partial });
+  }
+
+  /** Create a SupplierMatcher backed by the Visa Supplier Match Service for live VAA scores. */
+  static withVisaNetwork(
+    visaNetwork: VisaNetworkService,
+    weights?: Partial<ScoringWeights>,
+  ): SupplierMatcher {
+    return new SupplierMatcher({ visaNetwork, weights });
   }
 
   /** Returns the active scoring weights. */
@@ -199,7 +225,91 @@ export class SupplierMatcher {
     return `⚠ Manual override detected. You selected ${selected.supplier.name} (rank #${selected.rank}, ${selected.composite}/100), bypassing the AI recommendation.\n\n${best.supplier.name} scores ${gap} points higher at ${best.composite}/100. The largest gap is in ${weakDim}: ${best.supplier.name} scores ${best.dimensions[weakDim].toFixed(0)} vs ${selected.dimensions[weakDim].toFixed(0)} for ${selected.supplier.name}.${vaaLine}${edgeLine}\n\nThis override will be logged for audit and compliance review.`;
   }
 
+  /**
+   * Evaluate bids after automatically checking each supplier against the
+   * Visa Supplier Match Service registry.
+   *
+   * Suppliers confirmed in the Visa network get their `vaaScore` set from
+   * the match confidence (High=95, Medium=70, Low=45, None=0).
+   * Suppliers not found in Visa are scored 0 on the VAA dimension.
+   *
+   * Requires a `visaNetwork` service injected at construction time,
+   * or passed directly as `options.visaNetwork`.
+   *
+   * @example
+   * ```ts
+   * const matcher = SupplierMatcher.withVisaNetwork(VisaNetworkService.sandbox());
+   *
+   * const result = await matcher.evaluateWithVisaCheck({
+   *   rfp,
+   *   bids,
+   *   suppliers,
+   *   countryCode: 'US',  // ISO country code for Visa registry lookup
+   * });
+   *
+   * for (const sb of result.rankedBids) {
+   *   const reg = sb.supplier.visaNetwork;
+   *   console.log(
+   *     sb.supplier.name,
+   *     '| registered:', reg?.isRegistered,
+   *     '| VAA:', sb.dimensions.vaa,
+   *     '| MCC:', reg?.mcc,
+   *   );
+   * }
+   * ```
+   */
+  async evaluateWithVisaCheck(params: {
+    rfp: RFP;
+    bids: Bid[];
+    suppliers: Supplier[];
+    countryCode?: string;
+    visaNetwork?: VisaNetworkService;
+  }): Promise<EvaluationResult & {
+    visaChecks: Map<string, import('../types/visa-api').VisaNetworkCheckResult>;
+  }> {
+    const network = params.visaNetwork ?? this.visaNetwork;
+    if (!network) {
+      throw new Error(
+        'evaluateWithVisaCheck requires a VisaNetworkService. ' +
+        'Use SupplierMatcher.withVisaNetwork(service) or pass visaNetwork in params.',
+      );
+    }
+
+    // Enrich all suppliers with Visa network data in parallel
+    const enriched = await network.enrichSuppliers(
+      params.suppliers,
+      params.countryCode ?? 'US',
+    );
+
+    // Build a lookup map: supplierId → enriched supplier
+    const enrichedMap = new Map(enriched.map((s) => [s.id, s]));
+
+    // Merge enriched vaaScore back into the suppliers list
+    const enrichedSuppliers = params.suppliers.map((s) => {
+      const e = enrichedMap.get(s.id);
+      return e ? { ...s, vaaScore: e.vaaScore } : s;
+    });
+
+    // Run standard evaluation with enriched VAA scores
+    const result = this.evaluate({
+      rfp:       params.rfp,
+      bids:      params.bids,
+      suppliers: enrichedSuppliers,
+    });
+
+    // Build visaChecks map: supplierId → VisaNetworkCheckResult
+    const visaChecks = new Map(
+      enriched.map((s) => [s.id, s.visaNetwork]),
+    );
+
+    return { ...result, visaChecks };
+  }
+
   // ── Private helpers ────────────────────────────────────────────────────────
+
+  private isWeights(v: unknown): v is ScoringWeights {
+    return typeof v === 'object' && v !== null && 'price' in v && 'delivery' in v;
+  }
 
   private normalise(weights: ScoringWeights): ScoringWeights {
     const total = Object.values(weights).reduce((s, v) => s + v, 0);

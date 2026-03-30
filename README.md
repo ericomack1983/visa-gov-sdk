@@ -5,7 +5,7 @@ TypeScript SDK for Visa Government Procurement — two capabilities in one packa
 | Capability | What it does |
 |---|---|
 | **Visa Payments** | Virtual Card Number (VCN) issuance + multi-rail settlement (USD / USDC / Card) |
-| **Supplier Matching** | AI-powered bid evaluation using Visa Advanced Authorization (VAA) scores |
+| **Supplier Matching** | AI-powered bid evaluation with live Visa registry verification via the Visa Supplier Match Service (SMS) API |
 
 ---
 
@@ -153,13 +153,128 @@ console.log(result.narrative);
 | reliability | 20% | supplier.pastPerformance |
 | compliance | 15% | complianceStatus + certifications |
 | risk | 10% | supplier.riskScore |
-| **vaa** | **10%** | **supplier.vaaScore (Visa Advanced Authorization)** |
+| **vaa** | **10%** | **supplier.vaaScore — sourced from Visa SMS API or manual input** |
 
 **Custom weights:**
 
 ```ts
 // Price-focused procurement
 const matcher = SupplierMatcher.withWeights({ price: 0.50, vaa: 0.05 });
+```
+
+---
+
+### Visa Supplier Match Service — registry verification
+
+Before scoring, verify each supplier is registered in the Visa network.
+The match confidence (`High` / `Medium` / `Low` / `None`) is automatically
+mapped to the **VAA dimension** (0–100) in the AI scoring model.
+
+**Request fields** (`POST /suppliermatching/v1/supplierregistry/search`):
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `supplierName` | ✓ | Name of the supplier |
+| `supplierCountryCode` | ✓ | ISO 3166-1 alpha-2 country code (e.g. `"US"`, `"BR"`) |
+| `supplierCity` | — | City |
+| `supplierState` | — | State / province |
+| `supplierPostalCode` | — | Postal code |
+| `supplierStreetAddress` | — | Street address |
+| `supplierPhoneNumber` | — | Phone number |
+| `supplierTaxId` | — | Tax ID / EIN |
+
+**Response** (Visa SMS API):
+
+```json
+{
+  "matchConfidence": "High",
+  "matchStatus": "Yes",
+  "matchDetails": {
+    "mcc": "3501",
+    "l2": "",
+    "l3s": "",
+    "l3li": "",
+    "fleetInd": ""
+  },
+  "status": {
+    "statusCode": "SMSAPI000",
+    "statusDescription": "Request successfully received"
+  }
+}
+```
+
+**Confidence → VAA score mapping:**
+
+| matchConfidence | matchStatus | VAA score |
+|-----------------|-------------|-----------|
+| High | Yes | 95 |
+| Medium | Yes | 70 |
+| Low | Yes | 45 |
+| None / No | No | 0 |
+
+**Single check:**
+
+```ts
+const visaNetwork = VisaNetworkService.sandbox(); // or pass real VisaApiConfig
+
+const result = await visaNetwork.check({
+  supplierName:         'MedEquip Co.',
+  supplierCountryCode:  'US',
+  supplierCity:         'New York',
+  supplierState:        'NY',
+  supplierPostalCode:   '10001',
+  supplierStreetAddress: '123 Medical Ave',
+  supplierPhoneNumber:  '+12125550100',
+  supplierTaxId:        '82-1234567',
+});
+
+console.log(result.isRegistered);    // true
+console.log(result.confidenceScore); // 95
+console.log(result.mcc);             // "5047"
+console.log(result.supportsL2);      // true
+console.log(result.raw);             // full Visa API response
+```
+
+**Bulk check (parallel):**
+
+```ts
+const results = await visaNetwork.bulkCheck([
+  { supplierName: 'MedEquip Co.',       supplierCountryCode: 'US' },
+  { supplierName: 'HealthTech Supplies', supplierCountryCode: 'US' },
+]);
+
+for (const [name, res] of results) {
+  console.log(name, res.isRegistered, res.confidenceScore);
+}
+```
+
+**Evaluate with live Visa registry checks:**
+
+```ts
+// VAA scores are fetched live from Visa before scoring
+const matcher = SupplierMatcher.withVisaNetwork(VisaNetworkService.sandbox());
+
+const { rankedBids, winner, visaChecks } = await matcher.evaluateWithVisaCheck({
+  rfp,
+  bids,
+  suppliers,
+  countryCode: 'US',
+});
+
+for (const sb of rankedBids) {
+  const vc = visaChecks.get(sb.supplier.id);
+  console.log(sb.supplier.name, '| VAA:', sb.dimensions.vaa, '| MCC:', vc?.mcc);
+}
+```
+
+**Connect to the real Visa API:**
+
+```ts
+const service = new VisaNetworkService({
+  baseUrl:  'https://sandbox.api.visa.com',  // prod: 'https://api.visa.com'
+  userId:   process.env.VISA_USER_ID!,
+  password: process.env.VISA_PASSWORD!,
+});
 ```
 
 ---
@@ -285,6 +400,20 @@ const json = audit.export(events, 'json');
 | `generateOverrideNarrative(selected, best)` | `string` | Compliance warning text |
 | `getWeights()` | `ScoringWeights` | Active weight configuration |
 | `SupplierMatcher.withWeights(partial)` | `SupplierMatcher` | Custom weight instance |
+| `SupplierMatcher.withVisaNetwork(service, weights?)` | `SupplierMatcher` | Instance backed by Visa SMS API |
+| `evaluateWithVisaCheck({ rfp, bids, suppliers, countryCode? })` | `Promise<EvaluationResult & { visaChecks }>` | Evaluate after live Visa registry verification |
+
+### `VisaNetworkService`
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `VisaNetworkService.sandbox()` | `VisaNetworkService` | Create sandbox instance (no credentials) |
+| `new VisaNetworkService(config)` | `VisaNetworkService` | Create live instance with Visa API credentials |
+| `check(request)` | `Promise<VisaNetworkCheckResult>` | Check one supplier against Visa registry |
+| `bulkCheck(requests)` | `Promise<Map<name, result>>` | Check multiple suppliers in parallel |
+| `checkSupplier(supplier)` | `Promise<VisaNetworkCheckResult>` | Check a Supplier domain object directly |
+| `enrichSupplier(supplier)` | `Promise<Supplier & { visaNetwork }>` | Enrich supplier with Visa data + `vaaScore` |
+| `enrichSuppliers(suppliers, countryCode?)` | `Promise<EnrichedSupplier[]>` | Enrich multiple suppliers in parallel |
 
 ### `RFPManager`
 

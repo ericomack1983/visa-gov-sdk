@@ -26,7 +26,19 @@ export {
 // ── Procurement ───────────────────────────────────────────────────────────────
 export { SupplierMatcher, DEFAULT_WEIGHTS }     from './procurement/SupplierMatcher';
 export { RFPManager }                           from './procurement/RFPManager';
+export { VisaNetworkService }                   from './procurement/VisaNetworkService';
 export type { CreateRFPParams, SubmitBidParams } from './procurement/RFPManager';
+export type {
+  VisaSupplierMatchRequest,
+  VisaSupplierMatchResponse,
+  VisaNetworkCheckResult,
+  VisaApiConfig,
+  VisaMatchConfidence,
+  VisaMatchStatus,
+  VisaMatchDetails,
+  VisaApiStatus,
+}                                               from './types/visa-api';
+export { VISA_SMS_STATUS_CODES }                from './types/visa-api';
 
 // ── Audit ─────────────────────────────────────────────────────────────────────
 export { AuditService }                         from './audit/AuditService';
