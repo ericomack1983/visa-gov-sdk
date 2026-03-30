@@ -22,6 +22,7 @@ export {
   USD_STEP_DELAY_MS,
   USDC_STEP_DELAY_MS,
 }                                               from './payments/SettlementService';
+export { VPCService }                           from './payments/VPCService';
 
 // ── Procurement ───────────────────────────────────────────────────────────────
 export { SupplierMatcher, DEFAULT_WEIGHTS }     from './procurement/SupplierMatcher';
@@ -62,6 +63,36 @@ export type {
   Transaction,
   TransactionStatus,
 }                                               from './types';
+
+// ── VPC (Visa B2B Payment Controls) ──────────────────────────────────────────
+export type {
+  VPCRuleCode,
+  VPCRule,
+  VPCAccount,
+  VPCAccountStatus,
+  VPCContact,
+  VPCSpendVelocity,
+  VPCSpendPolicy,
+  VPCExactAmountMatch,
+  VPCBusinessHours,
+  VPCChannelRestriction,
+  VPCLocationRestriction,
+  VPCMCCRestriction,
+  VPCMCGRestriction,
+  VPCNotification,
+  VPCNotificationEvent,
+  VPCTransaction,
+  VPCSupplierRegistration,
+  VPCSupplierValidation,
+  VPCValidationStatus,
+  VPCCreateAccountParams,
+  VPCUpdateAccountParams,
+  VPCGetNotificationHistoryParams,
+  VPCGetTransactionHistoryParams,
+  IPCPromptRequest,
+  IPCRuleSetResponse,
+  IPCSuggestedRuleSet,
+}                                               from './types/vpc';
 
 // ── VCN Request (Visa B2B Virtual Account API) ────────────────────────────────
 export type {
