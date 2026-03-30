@@ -26,8 +26,6 @@ import {
   VCNService,
   SettlementService,
   SupplierMatcher,
-  RFPManager,
-  AuditService,
 } from '@visa-gov/sdk';
 ```
 
@@ -279,82 +277,11 @@ const service = new VisaNetworkService({
 
 ---
 
-### Full RFP lifecycle
-
-```ts
-const manager = new RFPManager();
-
-// 1. Create & publish
-const rfp = manager.create({
-  title:         'Medical Equipment Q2-2025',
-  budgetCeiling: 50_000,
-  deadline:      '2025-04-30',
-  category:      'Medical Equipment',
-  description:   '...',
-});
-manager.publish(rfp.id);
-
-// 2. Suppliers submit bids
-manager.submitBid({
-  rfpId:        rfp.id,
-  supplierId:   'sup-001',
-  supplierName: 'MedEquip Co.',
-  amount:       45_000,
-  deliveryDays: 30,
-});
-
-// 3. Run AI evaluation
-const { winner, rankedBids, narrative } = manager.evaluate(rfp.id, suppliers);
-
-// 4. Award (with override detection)
-const { rfp: awarded, overrideNarrative } = manager.award(rfp.id, winner.supplier.id);
-if (overrideNarrative) {
-  // Gov user overrode the AI — compliance warning generated
-  console.warn(overrideNarrative);
-}
-
-// 5. Mark paid
-manager.markPaid(rfp.id);
-```
+### ---
 
 ---
 
-### Override detection
-
-If a government official manually selects a lower-ranked supplier, the SDK automatically generates a compliance warning that will be logged for audit:
-
-```ts
-const { overrideNarrative } = manager.award(rfp.id, 'sup-003'); // rank #3
-
-// ⚠ Manual override detected. You selected BudgetMed LLC (rank #3, 61/100),
-//   bypassing the AI recommendation.
-//   MedEquip Co. scores 26 points higher at 87/100. The largest gap is in
-//   reliability: MedEquip Co. scores 92 vs 61 for BudgetMed LLC.
-//   Visa VAA score confirms MedEquip Co. carries lower payment risk (94 vs 55).
-//   This override will be logged for audit and compliance review.
-```
-
----
-
-## 3 · Audit Trail
-
-```ts
-const audit = new AuditService();
-
-const events = audit.buildTrail(rfps, transactions);
-
-// Filter
-const overrides = audit.filterByType(events, 'override_applied');
-const byRFP     = audit.filterByRFP(events, rfp.id);
-
-// Summary counts
-const summary = audit.summarise(events);
-// { rfp_created: 3, bid_submitted: 7, evaluation_run: 3, ... }
-
-// Export
-const csv  = audit.export(events, 'csv');
-const json = audit.export(events, 'json');
-```
+## 3 · API Reference
 
 ---
 
@@ -414,31 +341,6 @@ const json = audit.export(events, 'json');
 | `checkSupplier(supplier)` | `Promise<VisaNetworkCheckResult>` | Check a Supplier domain object directly |
 | `enrichSupplier(supplier)` | `Promise<Supplier & { visaNetwork }>` | Enrich supplier with Visa data + `vaaScore` |
 | `enrichSuppliers(suppliers, countryCode?)` | `Promise<EnrichedSupplier[]>` | Enrich multiple suppliers in parallel |
-
-### `RFPManager`
-
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `create(params)` | `RFP` | Create RFP (Draft) |
-| `publish(rfpId)` | `RFP` | Publish RFP (Open) |
-| `submitBid(params)` | `Bid` | Add supplier bid |
-| `evaluate(rfpId, suppliers)` | `EvaluationResult` | Run AI evaluation |
-| `award(rfpId, winnerId, justification?)` | `{ rfp, overrideNarrative? }` | Award RFP |
-| `markPaid(rfpId)` | `RFP` | Mark as paid |
-| `get(rfpId)` | `RFP \| undefined` | Retrieve by ID |
-| `list(status?)` | `RFP[]` | List all (optionally filtered) |
-| `load(rfps)` | `void` | Hydrate from external source |
-
-### `AuditService`
-
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `buildTrail(rfps, transactions)` | `AuditEvent[]` | Build full audit trail |
-| `filterByType(events, type)` | `AuditEvent[]` | Filter by event type |
-| `filterByRFP(events, rfpId)` | `AuditEvent[]` | Filter by RFP |
-| `filterByActor(events, actor)` | `AuditEvent[]` | Filter by actor name |
-| `export(events, format)` | `string` | Export as JSON or CSV |
-| `summarise(events)` | `Record<type, number>` | Count by event type |
 
 ---
 
