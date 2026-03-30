@@ -9,7 +9,7 @@
  *
  * @example
  * ```ts
- * import { VCNService, SettlementService, SupplierMatcher, RFPManager, AuditService } from '@visa-gov/sdk';
+ * import { VCNService, SettlementService, SupplierMatcher, VisaNetworkService } from '@visa-gov/sdk';
  * ```
  */
 
@@ -25,9 +25,7 @@ export {
 
 // ── Procurement ───────────────────────────────────────────────────────────────
 export { SupplierMatcher, DEFAULT_WEIGHTS }     from './procurement/SupplierMatcher';
-export { RFPManager }                           from './procurement/RFPManager';
 export { VisaNetworkService }                   from './procurement/VisaNetworkService';
-export type { CreateRFPParams, SubmitBidParams } from './procurement/RFPManager';
 export type {
   VisaSupplierMatchRequest,
   VisaSupplierMatchResponse,
@@ -40,16 +38,11 @@ export type {
 }                                               from './types/visa-api';
 export { VISA_SMS_STATUS_CODES }                from './types/visa-api';
 
-// ── Audit ─────────────────────────────────────────────────────────────────────
-export { AuditService }                         from './audit/AuditService';
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type {
   // Procurement
   Supplier,
   Bid,
-  RFP,
-  RFPStatus,
   DimensionScores,
   ScoredBid,
   ScoringWeights,
@@ -68,7 +61,4 @@ export type {
   SettlementResult,
   Transaction,
   TransactionStatus,
-  // Audit
-  AuditEvent,
-  AuditEventType,
 }                                               from './types';

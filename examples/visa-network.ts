@@ -3,8 +3,8 @@
  *
  * Run:  npx ts-node --esm examples/visa-network.ts
  */
-import { VisaNetworkService, SupplierMatcher, RFPManager } from '../src';
-import type { Supplier } from '../src';
+import { VisaNetworkService, SupplierMatcher } from '../src';
+import type { Supplier, Bid } from '../src';
 
 // ── Sample suppliers ─────────────────────────────────────────────────────────
 const SUPPLIERS: Supplier[] = [
@@ -95,28 +95,25 @@ async function main() {
   // ── 3. Enrich suppliers + AI evaluation ───────────────────────────────────
   console.log('\n━━━  Enriched AI Evaluation (VAA from Visa)  ━━━\n');
 
+  const rfp = {
+    id: 'rfp-001', title: 'Medical Equipment Q2-2025',
+    description: 'Surgical instruments for 3 hospitals',
+    budgetCeiling: 50_000, deadline: '2025-04-30',
+    category: 'Medical Equipment', status: 'Open' as const,
+    createdAt: new Date().toISOString(), bids: [],
+  };
+
+  const bids: Bid[] = [
+    { id: 'b1', rfpId: 'rfp-001', supplierId: 'sup-001', supplierName: 'MedEquip Co.',       amount: 45_000, deliveryDays: 30, notes: '', submittedAt: new Date().toISOString() },
+    { id: 'b2', rfpId: 'rfp-001', supplierId: 'sup-002', supplierName: 'HealthTech Supplies', amount: 48_500, deliveryDays: 35, notes: '', submittedAt: new Date().toISOString() },
+    { id: 'b3', rfpId: 'rfp-001', supplierId: 'sup-003', supplierName: 'BudgetMed LLC',       amount: 39_000, deliveryDays: 60, notes: '', submittedAt: new Date().toISOString() },
+  ];
+
   const matcher = SupplierMatcher.withVisaNetwork(visaNetwork);
-  const manager = new RFPManager(matcher);
-
-  const rfp = manager.create({
-    title:         'Medical Equipment Q2-2025',
-    description:   'Surgical instruments for 3 hospitals',
-    budgetCeiling: 50_000,
-    deadline:      '2025-04-30',
-    category:      'Medical Equipment',
-  });
-  manager.publish(rfp.id);
-
-  manager.submitBid({ rfpId: rfp.id, supplierId: 'sup-001', supplierName: 'MedEquip Co.',       amount: 45_000, deliveryDays: 30 });
-  manager.submitBid({ rfpId: rfp.id, supplierId: 'sup-002', supplierName: 'HealthTech Supplies', amount: 48_500, deliveryDays: 35 });
-  manager.submitBid({ rfpId: rfp.id, supplierId: 'sup-003', supplierName: 'BudgetMed LLC',       amount: 39_000, deliveryDays: 60 });
 
   // evaluateWithVisaCheck: calls Visa SMS API first, injects VAA scores, then ranks
   const { rankedBids, winner, narrative, visaChecks } = await matcher.evaluateWithVisaCheck({
-    rfp:         manager.get(rfp.id)!,
-    bids:        manager.get(rfp.id)!.bids,
-    suppliers:   SUPPLIERS,
-    countryCode: 'US',
+    rfp, bids, suppliers: SUPPLIERS, countryCode: 'US',
   });
 
   console.log('Ranked results (VAA sourced from Visa registry):\n');
