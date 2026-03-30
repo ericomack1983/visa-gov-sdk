@@ -1,0 +1,45 @@
+{
+  "name": "@visa-gov/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for Visa Government Procurement — VCN issuance, multi-rail settlement, and AI-powered supplier matching",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types":   "./dist/index.d.ts",
+      "import":  "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build":   "tsup src/index.ts --format cjs,esm --dts --clean",
+    "dev":     "tsup src/index.ts --format cjs,esm --dts --watch",
+    "typecheck": "tsc --noEmit",
+    "example:payments":    "npx ts-node --esm examples/payments.ts",
+    "example:procurement": "npx ts-node --esm examples/procurement.ts"
+  },
+  "keywords": [
+    "visa",
+    "vcn",
+    "virtual-card",
+    "government",
+    "procurement",
+    "settlement",
+    "supplier-matching",
+    "ai",
+    "typescript",
+    "sdk"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "ts-node": "^10.9.0",
+    "@types/node": "^20.0.0"
+  }
+}
