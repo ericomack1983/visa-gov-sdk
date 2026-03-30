@@ -12,7 +12,7 @@ TypeScript SDK for Visa Government Procurement — two capabilities in one packa
 ## Installation
 
 ```bash
-npm install @visa-gov/sdk
+npm install git+https://github.com/ericomack1983/visa-gov-sdk.git
 # or
 pnpm add @visa-gov/sdk
 ```
@@ -21,14 +21,14 @@ pnpm add @visa-gov/sdk
 
 ## Quick start
 
-ready-to-run test script for your visa-gov-sdk that demonstrates the full workflow: issuing a VCN, settling a payment, and matching a supplier.
+```ready-to-run test script for your visa-gov-sdk that demonstrates the full workflow: issuing a VCN, settling a payment, and matching a supplier.
 
 Here’s a complete test-sdk.ts script:
 
-// test-sdk.ts
-import { VCNService, SettlementService, SupplierMatcher } from '@visa-gov/sdk';
+  // test-sdk.ts
+  import { VCNService, SettlementService, SupplierMatcher } from '@visa-gov/sdk';
 
-async function main() {
+  async function main() {
   console.log('=== Visa Gov SDK Test Script ===');
 
   // 1️⃣ Issue a Virtual Card Number (VCN)
@@ -87,7 +87,7 @@ Run the test:
 ts-node test-sdk.ts
 
 You should see a console output showing the card issuance, payment settlement, and best supplier match.
-
+```
 ---
 
 ## 1 · Visa Payments
