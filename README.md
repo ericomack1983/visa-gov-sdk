@@ -21,13 +21,72 @@ pnpm add @visa-gov/sdk
 
 ## Quick start
 
-```ts
-import {
-  VCNService,
-  SettlementService,
-  SupplierMatcher,
-} from '@visa-gov/sdk';
-```
+ready-to-run test script for your visa-gov-sdk that demonstrates the full workflow: issuing a VCN, settling a payment, and matching a supplier.
+
+Here’s a complete test-sdk.ts script:
+
+// test-sdk.ts
+import { VCNService, SettlementService, SupplierMatcher } from '@visa-gov/sdk';
+
+async function main() {
+  console.log('=== Visa Gov SDK Test Script ===');
+
+  // 1️⃣ Issue a Virtual Card Number (VCN)
+  const vcnService = new VCNService();
+
+  console.log('\n[VCN] Issuing a new card...');
+  const { card } = await vcnService.issue({
+    holderName: 'Ministry of Health',
+    brand: 'Visa',
+    type: 'credit',
+    usageType: 'single-use',
+    mccCode: '5047',
+    spendLimit: 48_500,
+    controls: {
+      allowOnline: true,
+      allowIntl: false,
+      allowRecurring: false,
+    },
+  });
+
+  console.log(`[VCN] Card issued: **** **** **** ${card.last4}, Expiry: ${card.expiry}`);
+
+  // 2️⃣ Settle a Payment
+  const settlementService = new SettlementService();
+  console.log('\n[Settlement] Settling payment of $48,500...');
+  const settlement = await settlementService.settle({
+    method: 'USD', // or 'USDC' or 'Card'
+    orderId: 'ORD-2026-0001',
+    amount: 48_500,
+  });
+
+  console.log(`[Settlement] Payment settled at: ${settlement.settledAt} (Duration: ${settlement.durationMs} ms)`);
+
+  // 3️⃣ Find a Supplier
+  const supplierMatcher = new SupplierMatcher();
+  console.log('\n[SupplierMatcher] Finding best supplier for $50,000 medical purchase...');
+  const supplier = await supplierMatcher.findBestSupplier({
+    criteria: { category: 'medical', location: 'USA' },
+    amount: 50_000,
+  });
+
+  console.log(`[SupplierMatcher] Best supplier: ${supplier.supplierName} (Score: ${supplier.score})`);
+
+  console.log('\n✅ Test complete!');
+}
+
+main().catch((err) => {
+  console.error('Error running test:', err);
+});
+⚡ How to run it
+Make sure you have the SDK installed:
+npm install @visa-gov/sdk
+Install TypeScript and ts-node if you haven’t:
+npm install -D typescript ts-node
+Run the test:
+ts-node test-sdk.ts
+
+You should see a console output showing the card issuance, payment settlement, and best supplier match.
 
 ---
 
