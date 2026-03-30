@@ -62,3 +62,26 @@ export type {
   Transaction,
   TransactionStatus,
 }                                               from './types';
+
+// ── VCN Request (Visa B2B Virtual Account API) ────────────────────────────────
+export type {
+  VCNRuleCode,
+  VCNRuleOverride,
+  VCNRule,
+  VCNOptionalInfo,
+  VCNRequisitionDetails,
+  VCNRequestPayload,
+  VCNIssuedAccount,
+  VCNRequestResponse,
+  SPVOverrideCode,
+  AmountOverrideCode,
+  TOLRNCOverrideCode,
+  CAIDOverrideCode,
+}                                               from './types/vcn-request';
+export {
+  buildSPVRule,
+  buildAmountRule,
+  buildToleranceRule,
+  buildCAIDRule,
+  buildBlockRule,
+}                                               from './types/vcn-request';

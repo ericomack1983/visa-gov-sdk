@@ -5,6 +5,11 @@ import {
   IssuedCard,
   PaymentControls,
 } from '../types';
+import type {
+  VCNRequestPayload,
+  VCNRequestResponse,
+  VCNIssuedAccount,
+} from '../types/vcn-request';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VCNService — Virtual Card Number issuance via Visa VCN API (api.visa.com/vcn/v2/issue)
@@ -131,5 +136,104 @@ export class VCNService {
   /** Returns all supported MCC category codes. */
   getMCCCategories(): { code: string; label: string }[] {
     return MCC_CATEGORIES;
+  }
+
+  /**
+   * Request one or more virtual cards via the Visa B2B Virtual Account
+   * Payment Method API (`POST /vpa/v1/cards/provisioning`).
+   *
+   * In sandbox mode the call resolves immediately with simulated card data.
+   * In live mode it POSTs to `{baseUrl}/vpa/v1/cards/provisioning` with
+   * HTTP Basic authentication.
+   *
+   * @example
+   * ```ts
+   * import { VCNService, buildSPVRule, buildBlockRule } from '@visa-gov/sdk';
+   *
+   * const vcn = new VCNService();
+   *
+   * const response = await vcn.requestVirtualCard({
+   *   clientId:    'B2BWS_1_1_9999',
+   *   buyerId:     '9999',
+   *   messageId:   Date.now().toString(),
+   *   action:      'A',
+   *   numberOfCards: '1',
+   *   proxyPoolId: 'Proxy12345',
+   *   requisitionDetails: {
+   *     startDate: '2025-05-11',
+   *     endDate:   '2025-06-01',
+   *     timeZone:  'UTC-8',
+   *     rules: [
+   *       buildSPVRule({ spendLimitAmount: 5000, maxAuth: 10, currencyCode: '840', rangeType: 'monthly' }),
+   *       buildBlockRule('ECOM'),
+   *       buildBlockRule('ATM'),
+   *     ],
+   *   },
+   * });
+   *
+   * console.log(response.accounts[0].accountNumber);
+   * ```
+   */
+  async requestVirtualCard(
+    payload: VCNRequestPayload,
+    options?: {
+      /** Visa API base URL (default: sandbox simulation — no HTTP call). */
+      baseUrl?: string;
+      /** HTTP Basic auth — required when baseUrl is provided. */
+      credentials?: { userId: string; password: string };
+      /** Injectable fetch — defaults to global fetch. */
+      fetch?: typeof fetch;
+    },
+  ): Promise<VCNRequestResponse> {
+    // ── Live mode ─────────────────────────────────────────────────────────────
+    if (options?.baseUrl) {
+      const { baseUrl, credentials, fetch: _fetch = fetch } = options;
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      };
+      if (credentials) {
+        const token = btoa(`${credentials.userId}:${credentials.password}`);
+        headers['Authorization'] = `Basic ${token}`;
+      }
+
+      const res = await _fetch(`${baseUrl}/vpa/v1/cards/provisioning`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        throw new Error(
+          `Visa VPA API error: ${res.status} ${res.statusText}`,
+        );
+      }
+
+      return res.json() as Promise<VCNRequestResponse>;
+    }
+
+    // ── Sandbox simulation ────────────────────────────────────────────────────
+    const count = parseInt(payload.numberOfCards, 10) || 1;
+
+    const accounts: VCNIssuedAccount[] = Array.from({ length: count }, () => ({
+      accountNumber: '4' + Array.from({ length: 15 }, () => Math.floor(Math.random() * 10)).join(''),
+      proxyNumber:   'PRX' + Math.random().toString(36).slice(2, 10).toUpperCase(),
+      expiryDate:    (() => {
+        const d = new Date();
+        d.setFullYear(d.getFullYear() + 3);
+        return `${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+      })(),
+      cvv2:   String(Math.floor(100 + Math.random() * 900)),
+      status: 'active' as const,
+    }));
+
+    return {
+      messageId:       payload.messageId,
+      responseCode:    '00',
+      responseMessage: 'Virtual card(s) issued successfully',
+      accounts,
+      requestedAt:     new Date().toISOString(),
+    };
   }
 }

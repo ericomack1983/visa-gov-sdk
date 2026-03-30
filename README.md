@@ -126,6 +126,110 @@ for await (const state of session.stream()) {
 
 ---
 
+### Request a Virtual Card (B2B Virtual Account API)
+
+Issue virtual cards with embedded payment controls via `POST /vpa/v1/cards/provisioning`.
+Use the typed rule-builder helpers to compose any combination of spending limits, channel blocks,
+merchant locks, and tolerance bands.
+
+```ts
+import {
+  VCNService,
+  buildSPVRule,
+  buildAmountRule,
+  buildToleranceRule,
+  buildCAIDRule,
+  buildBlockRule,
+} from '@visa-gov/sdk';
+
+const vcn = new VCNService();
+
+const response = await vcn.requestVirtualCard({
+  clientId:      'B2BWS_1_1_9999',
+  buyerId:       '9999',
+  messageId:     Date.now().toString(),
+  action:        'A',
+  numberOfCards: '1',
+  proxyPoolId:   'Proxy12345',
+  requisitionDetails: {
+    startDate: '2025-05-11',
+    endDate:   '2025-06-01',
+    timeZone:  'UTC-8',
+    rules: [
+      // $5,000 monthly spend cap, max 10 auths
+      buildSPVRule({ spendLimitAmount: 5000, maxAuth: 10, currencyCode: '840', rangeType: 'monthly' }),
+      // Single-purchase limit: $1,000
+      buildAmountRule('PUR', 1000, '840'),
+      // Block e-commerce and ATM withdrawals
+      buildBlockRule('ECOM'),
+      buildBlockRule('ATM'),
+    ],
+  },
+});
+
+console.log(response.responseCode);              // "00" = success
+console.log(response.accounts[0].accountNumber); // Virtual card PAN
+console.log(response.accounts[0].expiryDate);    // MM/YYYY
+```
+
+**Connect to the real Visa VPA API:**
+
+```ts
+const response = await vcn.requestVirtualCard(payload, {
+  baseUrl:     'https://sandbox.api.visa.com',  // or https://api.visa.com
+  credentials: {
+    userId:   process.env.VISA_USER_ID!,
+    password: process.env.VISA_PASSWORD!,
+  },
+});
+```
+
+**Rule code reference:**
+
+| Code | Category | Description |
+|------|----------|-------------|
+| `SPV` | Spending | Spend velocity — rolling period limit + auth count cap |
+| `PUR` | Spending | Single-purchase amount cap |
+| `EAM` | Spending | Exact amount match — card authorised only for this amount |
+| `VPAS` | Spending | Virtual payment account specific — exact match with tolerance |
+| `TOLRNC` | Spending | Tolerance band — min/max delta around expected amount |
+| `XBRA` | Spending | Cross-border amount cap |
+| `ATML` | Spending | ATM cash withdrawal limit |
+| `CAID` | Merchant | Lock card to a single Card Acceptor ID |
+| `HOT` | Merchant | Block hotels / lodging |
+| `AUTO` | Merchant | Block auto dealers / rentals |
+| `AIR` | Merchant | Block airlines |
+| `REST` | Merchant | Block restaurants |
+| `FUEL` | Merchant | Block fuel / petrol |
+| `JEWL` | Merchant | Block jewelry |
+| `ELEC` | Merchant | Block electronics |
+| `ALC` | Merchant | Block alcohol / liquor stores |
+| `GTM` | Merchant | Block government / tax payments |
+| `OSS` | Merchant | Block other services |
+| `GROC` | Merchant | Block grocery |
+| `ENT` | Merchant | Block entertainment |
+| `UTIL` | Merchant | Block utilities |
+| `CLOTH` | Merchant | Block clothing / apparel |
+| `MED` | Merchant | Block medical / healthcare |
+| `ADT` | Merchant | Block adult content |
+| `ATM` | Channel | Block ATM cash withdrawals |
+| `ECOM` | Channel | Block e-commerce / online |
+| `CNP` | Channel | Block card-not-present |
+| `XBR` | Channel | Block cross-border transactions |
+| `NOC` | Other | No controls — open card |
+
+**Rule builders:**
+
+| Helper | Description |
+|--------|-------------|
+| `buildSPVRule(params)` | Spend velocity with amount + auth count + period |
+| `buildAmountRule(code, amount, currency)` | Amount-based rule (PUR, EAM, XBRA, ATML, VPAS) |
+| `buildToleranceRule(params)` | Tolerance band with min/max values |
+| `buildCAIDRule(caidValue)` | Lock card to a single merchant CAID |
+| `buildBlockRule(ruleCode)` | Simple on/off block for any channel or merchant category |
+
+---
+
 ## 2 · Visa Supplier Matching
 
 ### Evaluate bids for an RFP
@@ -295,6 +399,7 @@ const service = new VisaNetworkService({
 | `issueStepByStep(params)` | `AsyncGenerator` | Issue with real-time step events |
 | `getSteps()` | `VCNIssueStep[]` | Pipeline step definitions |
 | `getMCCCategories()` | `{ code, label }[]` | Supported MCC codes |
+| `requestVirtualCard(payload, options?)` | `Promise<VCNRequestResponse>` | Issue virtual card(s) via Visa B2B VPA API with embedded payment control rules |
 
 ### `SettlementService`
 
