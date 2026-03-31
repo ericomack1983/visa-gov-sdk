@@ -10,17 +10,50 @@ import { Supplier } from '../types';
 import { resolveFetch } from '../client';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VisaNetworkService — Visa Supplier Match Service (SMS) integration
+// VisaNetworkService — Visa Supplier Matching Service (SMS) integration
 //
-// Verifies whether a supplier is registered in the Visa network by calling
-// the Visa SMS API (POST /suppliermatching/v1/supplierregistry/search).
+// Verifies whether a supplier accepts Visa Commercial Payment Products by
+// calling the Visa Supplier Matching Service API.
+//
+// Confirmed endpoint (Visa Developer Center API Reference):
+//   POST /visasuppliermatchingservice/v1/search
+//   All parameters are passed as query string parameters (not request body).
+//
+// Bulk endpoints:
+//   POST /visasuppliermatchingservice/v1/upload   — upload CSV batch file
+//   GET  /visasuppliermatchingservice/v1/status   — poll batch file status
+//   GET  /visasuppliermatchingservice/v1/download — download matched results
 //
 // Two modes:
 //   Live     — calls the real Visa API (sandbox or production)
 //   Sandbox  — returns realistic mock responses without network calls
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SMS_ENDPOINT = '/suppliermatching/v1/supplierregistry/search';
+const SMS_BASE    = '/visasuppliermatchingservice/v1';
+const SMS_SEARCH  = `${SMS_BASE}/search`;
+const SMS_UPLOAD  = `${SMS_BASE}/upload`;
+const SMS_STATUS  = `${SMS_BASE}/status`;
+const SMS_DOWNLOAD = `${SMS_BASE}/download`;
+
+// ── Response from the bulk upload endpoint ────────────────────────────────────
+export interface VisaBulkUploadResponse {
+  fileId: number;
+  status: { statusCode: string; statusDescription: string };
+}
+
+// ── Response from the bulk status endpoint ────────────────────────────────────
+export interface VisaBulkStatusResponse {
+  fileId: number;
+  status: { statusCode: string; statusDescription: string };
+}
+
+// ── Response from the bulk download endpoint ─────────────────────────────────
+export interface VisaBulkDownloadResponse {
+  /** CSV-format strings — one entry per matched supplier. */
+  byteArray: string[];
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Map Visa confidence strings to a 0-100 score. */
 function confidenceToScore(confidence: VisaMatchConfidence, matched: boolean): number {
@@ -77,8 +110,12 @@ function buildSandboxResponse(
 /**
  * VisaNetworkService
  *
- * Checks whether a supplier is registered in the Visa network using the
- * Visa Supplier Match Service (SMS) API.
+ * Checks whether a supplier accepts Visa Commercial Payment Products using
+ * the Visa Supplier Matching Service (SMS) API.
+ *
+ * Suppliers confirmed by the API (matchStatus = "Yes") receive a
+ * `visaAcceptMark: true` flag on their result, which SupplierMatcher uses
+ * to annotate ScoredBids in evaluateWithVisaCheck().
  *
  * @example
  * ```ts
@@ -92,6 +129,7 @@ function buildSandboxResponse(
  *   supplierState:       'NY',
  * });
  *
+ * console.log(result.visaAcceptMark);   // true
  * console.log(result.isRegistered);     // true
  * console.log(result.confidenceScore);  // 95
  * console.log(result.mcc);              // "5047"
@@ -101,6 +139,9 @@ function buildSandboxResponse(
  *   baseUrl:  'https://sandbox.api.visa.com',
  *   userId:   process.env.VISA_USER_ID!,
  *   password: process.env.VISA_PASSWORD!,
+ *   cert:     fs.readFileSync('./certs/cert.pem', 'utf-8'),
+ *   key:      fs.readFileSync('./certs/privateKey-....pem', 'utf-8'),
+ *   ca:       caBundle,
  * });
  *
  * const result = await liveService.check({ supplierName: 'Acme Corp', supplierCountryCode: 'US' });
@@ -121,11 +162,12 @@ export class VisaNetworkService {
   }
 
   /**
-   * Check if a supplier is registered in the Visa network.
+   * Check if a supplier accepts Visa Commercial Payment Products.
+   * Endpoint: POST /visasuppliermatchingservice/v1/search
+   * Parameters are sent as query string (not request body).
    *
-   * @param request - Supplier details to match against the Visa registry.
-   *   `supplierName` and `supplierCountryCode` are required.
-   *   More fields = higher match accuracy.
+   * @param request - Supplier details to match. `supplierName` and
+   *   `supplierCountryCode` are required; more fields = higher accuracy.
    */
   async check(request: VisaSupplierMatchRequest): Promise<VisaNetworkCheckResult> {
     this.validateRequest(request);
@@ -156,12 +198,10 @@ export class VisaNetworkService {
       const settled = await Promise.allSettled(chunk.map((r) => this.check(r)));
       settled.forEach((outcome, i) => {
         const key = chunk[i].supplierName;
-        if (outcome.status === 'fulfilled') {
-          results.set(key, outcome.value);
-        } else {
-          // Build a "not found" result for failed requests
-          results.set(key, this.notFoundResult());
-        }
+        results.set(
+          key,
+          outcome.status === 'fulfilled' ? outcome.value : this.notFoundResult(),
+        );
       });
     }
 
@@ -170,7 +210,7 @@ export class VisaNetworkService {
 
   /**
    * Convenience: check a Supplier domain object directly.
-   * Maps Supplier fields to the Visa SMS request format.
+   * Maps Supplier fields to the Visa SMS query parameter format.
    */
   async checkSupplier(supplier: Supplier & {
     countryCode?: string;
@@ -182,28 +222,26 @@ export class VisaNetworkService {
     taxId?: string;
   }): Promise<VisaNetworkCheckResult> {
     return this.check({
-      supplierName:         supplier.name,
-      supplierCountryCode:  supplier.countryCode ?? 'US',
-      supplierCity:         supplier.city,
-      supplierState:        supplier.state,
-      supplierPostalCode:   supplier.postalCode,
+      supplierName:          supplier.name,
+      supplierCountryCode:   supplier.countryCode ?? 'US',
+      supplierCity:          supplier.city,
+      supplierState:         supplier.state,
+      supplierPostalCode:    supplier.postalCode,
       supplierStreetAddress: supplier.streetAddress,
-      supplierPhoneNumber:  supplier.phoneNumber,
-      supplierTaxId:        supplier.taxId,
+      supplierPhoneNumber:   supplier.phoneNumber,
+      supplierTaxId:         supplier.taxId,
     });
   }
 
   /**
    * Enrich a Supplier object with Visa network registry data.
+   * Adds `visaNetwork: VisaNetworkCheckResult` (includes `visaAcceptMark`).
    */
   async enrichSupplier<T extends Supplier>(
     supplier: T & { countryCode?: string },
   ): Promise<T & { visaNetwork: VisaNetworkCheckResult }> {
     const result = await this.checkSupplier(supplier);
-    return {
-      ...supplier,
-      visaNetwork: result,
-    };
+    return { ...supplier, visaNetwork: result };
   }
 
   /**
@@ -218,6 +256,103 @@ export class VisaNetworkService {
     );
   }
 
+  // ── Bulk API ───────────────────────────────────────────────────────────────
+
+  /**
+   * Upload a CSV bulk file of suppliers for batch matching.
+   * Endpoint: POST /visasuppliermatchingservice/v1/upload?countryCode=US
+   *
+   * @returns fileId — use with bulkStatus() and bulkDownload()
+   */
+  async bulkUpload(
+    csvContent: string,
+    countryCode: string,
+  ): Promise<VisaBulkUploadResponse> {
+    if (this.isSandbox) {
+      return {
+        fileId: Math.floor(1000 + Math.random() * 9000),
+        status: { statusCode: VISA_SMS_STATUS_CODES.SUCCESS, statusDescription: 'File uploaded successfully' },
+      };
+    }
+
+    const cfg   = this.config!;
+    const qs    = new URLSearchParams({ countryCode }).toString();
+    const url   = `${cfg.baseUrl}${SMS_UPLOAD}?${qs}`;
+    const token = Buffer.from(`${cfg.userId}:${cfg.password}`).toString('base64');
+    const fn    = resolveFetch(cfg);
+
+    const res = await fn(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'text/plain',
+        Accept:          'application/json',
+        Authorization:   `Basic ${token}`,
+      },
+      body: csvContent,
+    });
+
+    if (!res.ok) throw new Error(`Visa SMS upload error: HTTP ${res.status}`);
+    return res.json() as Promise<VisaBulkUploadResponse>;
+  }
+
+  /**
+   * Poll the processing status of a bulk upload.
+   * Endpoint: GET /visasuppliermatchingservice/v1/status?fileId=1001
+   */
+  async bulkStatus(fileId: string): Promise<VisaBulkStatusResponse> {
+    if (this.isSandbox) {
+      return {
+        fileId: Number(fileId),
+        status: { statusCode: VISA_SMS_STATUS_CODES.SUCCESS, statusDescription: 'File processing completed' },
+      };
+    }
+
+    const cfg   = this.config!;
+    const qs    = new URLSearchParams({ fileId }).toString();
+    const url   = `${cfg.baseUrl}${SMS_STATUS}?${qs}`;
+    const token = Buffer.from(`${cfg.userId}:${cfg.password}`).toString('base64');
+    const fn    = resolveFetch(cfg);
+
+    const res = await fn(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json', Authorization: `Basic ${token}` },
+    });
+
+    if (!res.ok) throw new Error(`Visa SMS status error: HTTP ${res.status}`);
+    return res.json() as Promise<VisaBulkStatusResponse>;
+  }
+
+  /**
+   * Download results of a completed bulk match.
+   * Endpoint: GET /visasuppliermatchingservice/v1/download?inputFileId=1001
+   *
+   * @returns byteArray — CSV-format strings, one per matched supplier.
+   */
+  async bulkDownload(inputFileId: string): Promise<VisaBulkDownloadResponse> {
+    if (this.isSandbox) {
+      return {
+        byteArray: [
+          '1,Acme Medical Supplies,123 Main St,Boston,MA,02101,840,Yes,High,5047',
+          '2,Budget Supplies Co,456 Oak Ave,Dallas,TX,75201,840,No,,',
+        ],
+      };
+    }
+
+    const cfg   = this.config!;
+    const qs    = new URLSearchParams({ inputFileId }).toString();
+    const url   = `${cfg.baseUrl}${SMS_DOWNLOAD}?${qs}`;
+    const token = Buffer.from(`${cfg.userId}:${cfg.password}`).toString('base64');
+    const fn    = resolveFetch(cfg);
+
+    const res = await fn(url, {
+      method: 'GET',
+      headers: { Accept: 'application/json', Authorization: `Basic ${token}` },
+    });
+
+    if (!res.ok) throw new Error(`Visa SMS download error: HTTP ${res.status}`);
+    return res.json() as Promise<VisaBulkDownloadResponse>;
+  }
+
   // ── Private helpers ────────────────────────────────────────────────────────
 
   private validateRequest(request: VisaSupplierMatchRequest): void {
@@ -227,7 +362,7 @@ export class VisaNetworkService {
     if (!request.supplierCountryCode?.trim()) {
       throw new Error('VisaNetworkService: supplierCountryCode is required');
     }
-    if (!/^[A-Z]{2}$/.test(request.supplierCountryCode.toUpperCase())) {
+    if (!/^[A-Z]{2}$/i.test(request.supplierCountryCode)) {
       throw new Error(
         `VisaNetworkService: supplierCountryCode must be a 2-letter ISO code (got "${request.supplierCountryCode}")`,
       );
@@ -238,19 +373,32 @@ export class VisaNetworkService {
     request: VisaSupplierMatchRequest,
   ): Promise<VisaSupplierMatchResponse> {
     const cfg = this.config!;
-    const url = `${cfg.baseUrl}${SMS_ENDPOINT}`;
 
-    const credentials = Buffer.from(`${cfg.userId}:${cfg.password}`).toString('base64');
-    const fetchFn     = resolveFetch(cfg);
+    // Build query string — Visa SMS API passes all params as query parameters
+    const params: Record<string, string> = {
+      supplierName:        request.supplierName,
+      supplierCountryCode: request.supplierCountryCode,
+    };
+    if (request.supplierStreetAddress) params.supplierStreetAddress = request.supplierStreetAddress;
+    if (request.supplierCity)          params.supplierCity          = request.supplierCity;
+    if (request.supplierState)         params.supplierState         = request.supplierState;
+    if (request.supplierPostalCode)    params.supplierPostalCode    = request.supplierPostalCode;
+    if (request.supplierPhoneNumber)   params.supplierPhoneNumber   = request.supplierPhoneNumber;
+    if (request.supplierTaxId)         params.supplierTaxId         = request.supplierTaxId;
+
+    const qs  = new URLSearchParams(params).toString();
+    const url = `${cfg.baseUrl}${SMS_SEARCH}?${qs}`;
+
+    const token  = Buffer.from(`${cfg.userId}:${cfg.password}`).toString('base64');
+    const fetchFn = resolveFetch(cfg);
 
     const response = await fetchFn(url, {
-      method:  'POST',
+      method: 'POST',
       headers: {
-        'Content-Type':  'application/json',
-        'Accept':        'application/json',
-        'Authorization': `Basic ${credentials}`,
+        Accept:         'application/json',
+        Authorization:  `Basic ${token}`,
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(request),
     });
 
     if (!response.ok) {
@@ -263,15 +411,17 @@ export class VisaNetworkService {
   }
 
   private parseResponse(raw: VisaSupplierMatchResponse): VisaNetworkCheckResult {
-    const isRegistered = raw.matchStatus === 'Yes';
+    const isRegistered  = raw.matchStatus === 'Yes';
+    const visaAcceptMark = isRegistered;  // Visa Accept Mark = matchStatus "Yes"
 
     return {
       raw,
       isRegistered,
+      visaAcceptMark,
       confidenceScore: confidenceToScore(raw.matchConfidence, isRegistered),
       mcc:             raw.matchDetails.mcc,
-      supportsL2:      raw.matchDetails.l2  === 'Y',
-      supportsL3:      raw.matchDetails.l3s === 'Y' || raw.matchDetails.l3li === 'Y',
+      supportsL2:      raw.matchDetails.l2   === 'Y',
+      supportsL3:      raw.matchDetails.l3s  === 'Y' || raw.matchDetails.l3li === 'Y',
       isFleetSupplier: raw.matchDetails.fleetInd === 'Y',
       checkedAt:       new Date().toISOString(),
     };
@@ -286,6 +436,7 @@ export class VisaNetworkService {
         status:          { statusCode: VISA_SMS_STATUS_CODES.SERVER_ERROR, statusDescription: 'Request failed' },
       },
       isRegistered:    false,
+      visaAcceptMark:  false,
       confidenceScore: 0,
       mcc:             '',
       supportsL2:      false,

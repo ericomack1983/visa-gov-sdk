@@ -108,6 +108,13 @@ export interface VisaNetworkCheckResult {
   /** Whether the supplier is registered in the Visa network */
   isRegistered: boolean;
 
+  /**
+   * Visa Accept Mark — true when the Visa Supplier Matching Service returns
+   * matchStatus = "Yes". Indicates the supplier accepts Visa Commercial Payment
+   * Products and is eligible for virtual card / B2B payment flows.
+   */
+  visaAcceptMark: boolean;
+
   /** Visa match confidence mapped to 0-100 (High=95, Medium=70, Low=45, None=0) */
   confidenceScore: number;
 

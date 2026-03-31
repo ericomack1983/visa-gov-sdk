@@ -1,4 +1,4 @@
-export { VCNService, MCC_CATEGORIES } from './VCNService';
+export { VCNService } from './VCNService';
 export {
   SettlementService,
   SettlementSession,

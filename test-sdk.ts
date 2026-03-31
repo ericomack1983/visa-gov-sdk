@@ -2,7 +2,7 @@
  * @visa-gov/sdk — Full SDK Test Script
  *
  * Tests all capabilities:
- *   1. VCNService          — issue(), issueStepByStep(), requestVirtualCard()
+ *   1. VCNService          — requestVirtualCard() (Visa B2B Virtual Account API)
  *   2. SettlementService   — USD and Card rails, manual + auto + streaming
  *   3. SupplierMatcher     — evaluate(), custom weights, override narrative
  *   4. VisaNetworkService  — single check, bulk check, enrichSuppliers
@@ -91,46 +91,8 @@ const BIDS: Bid[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function testVCN() {
-  section('1 · VCNService — Virtual Card Number issuance');
+  section('1 · VCNService — Request a Virtual Card (B2B Virtual Account API)');
   const vcn = new VCNService();
-
-  // issue() — synchronous
-  const { card } = vcn.issue({ holderName: 'Ministry of Health', mccCode: '5047', spendLimit: 48_500 });
-  ok('issue() returns a card',               !!card);
-  ok('card has id',                           card.id.startsWith('vcn_'));
-  ok('card last4 is 4 digits',               card.last4.length === 4);
-  ok('card expiry is MM/YY format',           /^\d{2}\/\d{2}$/.test(card.expiry));
-  ok('card status is active',                 card.status === 'active');
-  ok('card holderName is correct',            card.holderName === 'Ministry of Health');
-  ok('card mccCode is set',                   card.mccCode === '5047');
-  ok('card spendLimit is set',                card.spendLimit === 48_500);
-  ok('controls.allowOnline defaults true',    card.controls.allowOnline === true);
-  ok('controls.allowIntl defaults false',     card.controls.allowIntl === false);
-  ok('controls.allowRecurring defaults false',card.controls.allowRecurring === false);
-  console.log(`\n     Card: ···· ···· ···· ${card.last4}  ${card.expiry}  (${card.brand} ${card.type})`);
-
-  // getSteps()
-  const steps = vcn.getSteps();
-  ok('getSteps() returns 6 steps',            steps.length === 6);
-  ok('first step key = validating',           steps[0].key === 'validating');
-  ok('last step key = issued',                steps[steps.length - 1].key === 'issued');
-
-  // getMCCCategories()
-  const mccs = vcn.getMCCCategories();
-  ok('getMCCCategories() returns categories', mccs.length > 0);
-  ok('each category has code + label',        mccs.every((m) => m.code && m.label));
-
-  // issueStepByStep()
-  console.log('\n     Step-by-step pipeline:');
-  let stepCount = 0;
-  let finalCard = null;
-  for await (const { step, card: c } of vcn.issueStepByStep({ holderName: 'Gov Procurement' })) {
-    console.log(`       [${step.key}] ${step.label}`);
-    stepCount++;
-    if (c) finalCard = c;
-  }
-  ok('issueStepByStep yields 6 events',       stepCount === 6);
-  ok('issueStepByStep returns final card',    !!finalCard);
 
   // requestVirtualCard() — sandbox
   console.log('\n     requestVirtualCard() — sandbox:');
@@ -252,8 +214,8 @@ async function testSupplierMatcher() {
   ok('winner is rank 1',                      result.winner.rank === 1);
   ok('winner.isWinner = true',                result.winner.isWinner);
   ok('composite scores 0-100',                result.rankedBids.every((sb) => sb.composite >= 0 && sb.composite <= 100));
-  ok('each bid has all 5 dimensions',         result.rankedBids.every((sb) =>
-    ['price', 'delivery', 'reliability', 'compliance', 'risk'].every((d) => d in sb.dimensions),
+  ok('each bid has all 6 dimensions',         result.rankedBids.every((sb) =>
+    ['price', 'delivery', 'reliability', 'compliance', 'risk', 'visaMatchScore'].every((d) => d in sb.dimensions),
   ));
   ok('narrative is non-empty',                result.narrative.length > 10);
   console.log('\n     Rankings:');
@@ -350,13 +312,15 @@ async function testVisaNetwork() {
   const { rankedBids, winner, visaChecks } = await visaMatcher.evaluateWithVisaCheck({
     rfp: RFP_FIXTURE, bids: BIDS, suppliers: SUPPLIERS, countryCode: 'US',
   });
-  ok('evaluateWithVisaCheck() returns rankedBids', rankedBids.length === 3);
-  ok('evaluateWithVisaCheck() returns visaChecks', visaChecks.size === 3);
-  ok('winner is determined',                       !!winner);
+  ok('evaluateWithVisaCheck() returns rankedBids',        rankedBids.length === 3);
+  ok('evaluateWithVisaCheck() returns visaChecks',        visaChecks.size === 3);
+  ok('winner is determined',                              !!winner);
+  ok('visaMatchScore > 0 for registered supplier',        rankedBids.some((sb) => sb.dimensions.visaMatchScore > 0));
+  ok('visaMatchScore = 0 for unregistered supplier',      rankedBids.some((sb) => sb.dimensions.visaMatchScore === 0));
   console.log(`       Winner: ${winner.supplier.name} (${winner.composite}/100)`);
   for (const sb of rankedBids) {
     const vc = visaChecks.get(sb.supplier.id);
-    console.log(`       #${sb.rank}  ${sb.supplier.name.padEnd(24)}  composite=${sb.composite}  registered=${vc?.isRegistered ? '✓' : '✗'}  MCC=${vc?.mcc || '—'}`);
+    console.log(`       #${sb.rank}  ${sb.supplier.name.padEnd(24)}  composite=${sb.composite}  visaMatchScore=${sb.dimensions.visaMatchScore}  MCC=${vc?.mcc || '—'}`);
   }
 }
 

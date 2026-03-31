@@ -1,42 +1,42 @@
 /**
- * Example: Visa Payments — VCN issuance + settlement
+ * Example: Visa Payments — Virtual Card request + settlement
  *
  * Run:  npx ts-node examples/payments.ts
  */
-import { VCNService, SettlementService } from '../src';
+import { VCNService, SettlementService, buildSPVRule, buildBlockRule } from '../src';
 
 async function main() {
-  // ── 1. Issue a Virtual Card Number ──────────────────────────────────────
+  // ── 1. Request a Virtual Card (B2B Virtual Account API) ──────────────────
   const vcn = new VCNService();
 
-  console.log('\n━━━  Visa VCN Issuance  ━━━');
-  console.log('Available MCC categories:', vcn.getMCCCategories().slice(0, 3));
+  console.log('\n━━━  Visa B2B Virtual Card Request  ━━━');
 
-  // Option A: instant result
-  const { card } = vcn.issue({
-    holderName:  'Ministry of Health',
-    brand:       'Visa',
-    type:        'credit',
-    usageType:   'single-use',
-    mccCode:     '5047',              // Medical & Dental Equipment
-    spendLimit:  48_500,
-    controls:    { allowOnline: true, allowIntl: false, allowRecurring: false },
+  const response = await vcn.requestVirtualCard({
+    clientId:      'B2BWS_1_1_9999',
+    buyerId:       '9999',
+    messageId:     Date.now().toString(),
+    action:        'A',
+    numberOfCards: '1',
+    proxyPoolId:   'Proxy12345',
+    requisitionDetails: {
+      startDate: '2025-05-11',
+      endDate:   '2025-06-01',
+      timeZone:  'UTC-8',
+      rules: [
+        buildSPVRule({ spendLimitAmount: 48_500, maxAuth: 1, currencyCode: '840', rangeType: 'monthly' }),
+        buildBlockRule('ECOM'),
+        buildBlockRule('ATM'),
+      ],
+    },
   });
-  console.log('\nCard issued:');
-  console.log(`  ID:        ${card.id}`);
-  console.log(`  Last4:     •••• ${card.last4}`);
-  console.log(`  Expiry:    ${card.expiry}`);
-  console.log(`  Brand:     ${card.brand}`);
-  console.log(`  Usage:     ${card.usageType}`);
-  console.log(`  MCC:       ${card.mccCode}`);
-  console.log(`  Controls:  online=${card.controls.allowOnline}, intl=${card.controls.allowIntl}`);
 
-  // Option B: step-by-step (mirrors real API latency — great for progress UIs)
-  console.log('\n━━━  VCN Pipeline (step-by-step)  ━━━');
-  for await (const { step, card: issued } of vcn.issueStepByStep({ holderName: 'Gov Procurement' })) {
-    console.log(`  [${step.key.toUpperCase().padEnd(10)}] ${step.label}`);
-    if (issued) console.log(`  → Card ready: •••• ${issued.last4}`);
-  }
+  const card = response.accounts[0];
+  console.log('\nCard provisioned:');
+  console.log(`  PAN:         •••• •••• •••• ${card.accountNumber.slice(-4)}`);
+  console.log(`  Proxy:       ${card.proxyNumber}`);
+  console.log(`  Expiry:      ${card.expiryDate}`);
+  console.log(`  Status:      ${card.status}`);
+  console.log(`  Response:    ${response.responseCode} — ${response.responseMessage}`);
 
   // ── 2. Settle a payment ─────────────────────────────────────────────────
   const settlement = new SettlementService();
@@ -56,9 +56,9 @@ async function main() {
   }
   console.log(`  ${state.progress}%  ${session.getStepLabel()}`);
 
-  console.log('\n━━━  USDC Settlement (automated)  ━━━');
+  console.log('\n━━━  Card Settlement (automated)  ━━━');
   const result = await settlement.settle(
-    { method: 'USDC', orderId: 'ORD-2025-0002', amount: 12_000 },
+    { method: 'Card', orderId: 'ORD-2025-0002', amount: 12_000 },
     400, // 400ms per step for demo (real: 1500ms)
   );
   console.log('  Settled:', result);

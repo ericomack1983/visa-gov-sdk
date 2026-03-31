@@ -30,7 +30,7 @@ import {
 } from ‘@visa-gov/sdk’;
 ```
 
-Run the full test suite (116 assertions across all services):
+Run the full test suite (100 assertions across all services):
 
 ```bash
 npx tsx test-sdk.ts
@@ -38,98 +38,6 @@ npx tsx test-sdk.ts
 ---
 
 ## 1 · Visa Payments
-
-### Issue a Virtual Card Number
-
-```ts
-const vcn = new VCNService();
-
-// Instant — returns the final card immediately
-const { card } = vcn.issue({
-  holderName:  'Ministry of Health',
-  brand:       'Visa',
-  type:        'credit',
-  usageType:   'single-use',
-  mccCode:     '5047',          // Medical & Dental Equipment
-  spendLimit:  48_500,
-  controls:    {
-    allowOnline:    true,
-    allowIntl:      false,
-    allowRecurring: false,
-  },
-});
-console.log(card.last4, card.expiry);
-```
-
-**Step-by-step** (mirrors real Visa VCN API pipeline — great for progress UIs):
-
-```ts
-// validating → contacting → generating → vpa → vpc → issued
-for await (const { step, card } of vcn.issueStepByStep({ holderName: 'Gov Procurement' })) {
-  console.log(`[${step.key}] ${step.label}`);
-  if (card) console.log('Card ready:', card.id, '····', card.last4);
-}
-```
-
-VCN pipeline steps:
-
-| Step | Label | Delay |
-|------|-------|-------|
-| `validating` | Validating VCN request… | 900 ms |
-| `contacting` | Contacting issuer network… | 1,400 ms |
-| `generating` | Generating virtual card credentials… | 1,100 ms |
-| `vpa` | Creating VPA (Pseudo Accounts)… | 1,200 ms |
-| `vpc` | Applying Visa Payment Controls… | 1,000 ms |
-| `issued` | VCN issued successfully! | — |
-
----
-
-### Settle a payment
-
-Settlement rails are supported:
-
-| Rail | Steps | Default timing |
-|------|-------|---------------|
-| `Card` | authorized → processing → settled | 2 s/step (~6 s total) |
-
-
-**Automated (recommended):**
-
-```ts
-const service = new SettlementService();
-
-const result = await service.settle({
-  method:  'USD',
-  orderId: 'ORD-2025-0001',
-  amount:  48_500,
-});
-console.log(result.settledAt, result.durationMs);
-```
-
-**Manual step control:**
-
-```ts
-const session = service.initiate({ method: 'USDC', orderId: 'ORD-002', amount: 12_000 });
-
-// Drive each step yourself
-session.advance(); // submitted → confirmed
-session.advance(); // confirmed → settled
-
-console.log(session.getState());  // { currentStep: 'settled', progress: 100 }
-```
-
-**Streaming (for real-time UIs):**
-
-```ts
-for await (const state of session.stream()) {
-  console.log(`${state.progress}% — ${state.currentStep}`);
-}
-// 33% — authorized
-// 66% — processing
-// 100% — settled
-```
-
----
 
 ### Request a Virtual Card (B2B Virtual Account API)
 
@@ -235,6 +143,52 @@ const response = await vcn.requestVirtualCard(payload, {
 
 ---
 
+### Settle a payment
+
+Two settlement rails are supported:
+
+| Rail | Steps | Default timing |
+|------|-------|---------------|
+| `USD` | authorized → processing → settled | 2 s/step (~6 s total) |
+| `Card` | authorized → processing → settled | 2 s/step (~6 s total) |
+
+**Automated (recommended):**
+
+```ts
+const service = new SettlementService();
+
+const result = await service.settle({
+  method:  'USD',
+  orderId: 'ORD-2025-0001',
+  amount:  48_500,
+});
+console.log(result.settledAt, result.durationMs);
+```
+
+**Manual step control:**
+
+```ts
+const session = service.initiate({ method: 'Card', orderId: 'ORD-002', amount: 12_000 });
+
+session.advance(); // authorized → processing
+session.advance(); // processing → settled
+
+console.log(session.getState());  // { currentStep: 'settled', progress: 100 }
+```
+
+**Streaming (for real-time UIs):**
+
+```ts
+for await (const state of session.stream()) {
+  console.log(`${state.progress}% — ${state.currentStep}`);
+}
+// 33% — authorized
+// 66% — processing
+// 100% — settled
+```
+
+---
+
 ## 2 · Visa Supplier Matching
 
 ### Evaluate bids for an RFP
@@ -246,9 +200,8 @@ const result = matcher.evaluate({ rfp, bids, suppliers });
 
 console.log(result.winner.supplier.name, result.winner.composite);
 console.log(result.narrative);
-// "MedEquip Co. leads with a composite score of 87/100 and a Visa
-//  Advanced Authorization (VAA) Score of 94, reflecting high payment
-//  reliability. Their strongest dimension is reliability (92/100)..."
+// "MedEquip Co. leads with a composite score of 87/100, reflecting strong
+//  overall performance. Their strongest dimension is reliability (92/100)..."
 ```
 
 **Scoring dimensions** (default weights):
@@ -260,13 +213,13 @@ console.log(result.narrative);
 | reliability | 20% | supplier.pastPerformance |
 | compliance | 15% | complianceStatus + certifications |
 | risk | 10% | supplier.riskScore |
-| **vaa** | **10%** | **supplier.vaaScore — sourced from Visa SMS API or manual input** |
+| **visaMatchScore** | **10%** | **Visa Supplier Match Score — derived from `matchConfidence` (High=95, Medium=70, Low=45, None=0)** |
 
 **Custom weights:**
 
 ```ts
 // Price-focused procurement
-const matcher = SupplierMatcher.withWeights({ price: 0.50, vaa: 0.05 });
+const matcher = SupplierMatcher.withWeights({ price: 0.50, visaMatchScore: 0.05 });
 ```
 
 ---
@@ -274,10 +227,11 @@ const matcher = SupplierMatcher.withWeights({ price: 0.50, vaa: 0.05 });
 ### Visa Supplier Match Service — registry verification
 
 Before scoring, verify each supplier is registered in the Visa network.
-The match confidence (`High` / `Medium` / `Low` / `None`) is automatically
-mapped to the **VAA dimension** (0–100) in the AI scoring model.
+The `matchConfidence` returned by the Visa SMS API is automatically mapped to the
+**Visa Supplier Match Score** (0–100) and fed into the AI scoring model as the
+`visaMatchScore` dimension.
 
-**Request fields** (`POST /suppliermatching/v1/supplierregistry/search`):
+**Request fields** (`POST /visasuppliermatchingservice/v1/search`):
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -310,10 +264,10 @@ mapped to the **VAA dimension** (0–100) in the AI scoring model.
 }
 ```
 
-**Confidence → VAA score mapping:**
+**Confidence → Visa Supplier Match Score mapping:**
 
-| matchConfidence | matchStatus | VAA score |
-|-----------------|-------------|-----------|
+| matchConfidence | matchStatus | visaMatchScore |
+|-----------------|-------------|----------------|
 | High | Yes | 95 |
 | Medium | Yes | 70 |
 | Low | Yes | 45 |
@@ -358,7 +312,7 @@ for (const [name, res] of results) {
 **Evaluate with live Visa registry checks:**
 
 ```ts
-// VAA scores are fetched live from Visa before scoring
+// Visa Supplier Match Scores are fetched live from Visa before scoring
 const matcher = SupplierMatcher.withVisaNetwork(VisaNetworkService.sandbox());
 
 const { rankedBids, winner, visaChecks } = await matcher.evaluateWithVisaCheck({
@@ -370,7 +324,7 @@ const { rankedBids, winner, visaChecks } = await matcher.evaluateWithVisaCheck({
 
 for (const sb of rankedBids) {
   const vc = visaChecks.get(sb.supplier.id);
-  console.log(sb.supplier.name, '| VAA:', sb.dimensions.vaa, '| MCC:', vc?.mcc);
+  console.log(sb.supplier.name, '| Visa Match Score:', sb.dimensions.visaMatchScore, '| MCC:', vc?.mcc);
 }
 ```
 
@@ -561,7 +515,7 @@ const vpc = VPCService.live({
 | `check(request)` | `Promise<VisaNetworkCheckResult>` | Check one supplier against Visa registry |
 | `bulkCheck(requests)` | `Promise<Map<name, result>>` | Check multiple suppliers in parallel |
 | `checkSupplier(supplier)` | `Promise<VisaNetworkCheckResult>` | Check a Supplier domain object directly |
-| `enrichSupplier(supplier)` | `Promise<Supplier & { visaNetwork }>` | Enrich supplier with Visa data + `vaaScore` |
+| `enrichSupplier(supplier)` | `Promise<Supplier & { visaNetwork }>` | Enrich supplier with Visa data including `visaMatchScore` |
 | `enrichSuppliers(suppliers, countryCode?)` | `Promise<EnrichedSupplier[]>` | Enrich multiple suppliers in parallel |
 
 ### `VPCService`

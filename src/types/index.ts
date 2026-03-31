@@ -48,11 +48,17 @@ export interface RFP {
 }
 
 export interface DimensionScores {
-  price: number;        // 0-100
-  delivery: number;     // 0-100
-  reliability: number;  // 0-100
-  compliance: number;   // 0-100
-  risk: number;         // 0-100
+  price: number;           // 0-100
+  delivery: number;        // 0-100
+  reliability: number;     // 0-100
+  compliance: number;      // 0-100
+  risk: number;            // 0-100
+  /**
+   * Visa Supplier Match Score — derived from the Visa Supplier Matching Service
+   * `matchConfidence` field (High=95, Medium=70, Low=45, None=0).
+   * 0 when no Visa check has been performed (basic evaluate() call).
+   */
+  visaMatchScore: number;  // 0-100
 }
 
 export interface ScoredBid {
@@ -62,6 +68,12 @@ export interface ScoredBid {
   composite: number;    // 0-100
   rank: number;         // 1 = best
   isWinner: boolean;
+  /**
+   * Visa Accept Mark — set to true when the Visa Supplier Matching Service
+   * confirms this supplier accepts Visa Commercial Payment Products
+   * (matchStatus = "Yes"). Only present after evaluateWithVisaCheck().
+   */
+  visaAcceptMark?: boolean;
 }
 
 export interface ScoringWeights {
@@ -70,6 +82,8 @@ export interface ScoringWeights {
   reliability: number;
   compliance: number;
   risk: number;
+  /** Weight for Visa Supplier Match Score dimension (default 0.10). */
+  visaMatchScore: number;
 }
 
 export interface EvaluationResult {
@@ -78,6 +92,12 @@ export interface EvaluationResult {
   winner: ScoredBid;
   evaluatedAt: string;  // ISO 8601
   narrative: string;
+  /**
+   * IDs of suppliers confirmed by the Visa Supplier Matching Service as
+   * accepting Visa Commercial Payment Products (matchStatus = "Yes").
+   * Only present after evaluateWithVisaCheck().
+   */
+  visaAcceptedSupplierIds?: string[];
 }
 
 // ── Payments ──────────────────────────────────────────────────────────────────
@@ -95,52 +115,6 @@ export interface PaymentCard {
   holderName: string;
   status: 'active' | 'inactive';
   usageType?: 'single-use' | 'multi-use';
-}
-
-export interface PaymentControls {
-  allowOnline: boolean;
-  allowIntl: boolean;
-  allowRecurring: boolean;
-}
-
-export interface VCNIssueParams {
-  holderName: string;
-  brand?: 'Visa' | 'Mastercard' | 'Amex';
-  type?: 'credit' | 'debit';
-  usageType?: 'single-use' | 'multi-use';
-  mccCode?: string;
-  spendLimit?: number;
-  expiryMonths?: number;
-  supplierId?: string;
-  cardAcceptorId?: string;
-  controls?: Partial<PaymentControls>;
-}
-
-export interface IssuedCard {
-  id: string;
-  last4: string;
-  expiry: string;       // MM/YY
-  holderName: string;
-  brand: 'Visa' | 'Mastercard' | 'Amex';
-  type: 'credit' | 'debit';
-  usageType: 'single-use' | 'multi-use';
-  mccCode?: string;
-  spendLimit?: number;
-  status: 'active';
-  controls: PaymentControls;
-  issuedAt: string;     // ISO 8601
-}
-
-export interface VCNIssueStep {
-  key: 'validating' | 'contacting' | 'generating' | 'vpa' | 'vpc' | 'issued';
-  label: string;
-  durationMs: number;
-}
-
-export interface VCNIssueResult {
-  card: IssuedCard;
-  steps: VCNIssueStep[];
-  issuedAt: string;
 }
 
 export type USDSettlementStep = 'idle' | 'authorized' | 'processing' | 'settled';

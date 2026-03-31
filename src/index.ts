@@ -18,7 +18,7 @@ export { createMtlsFetch }                      from './client';
 export type { VisaTLSMaterials }                from './client';
 
 // ── Payments ──────────────────────────────────────────────────────────────────
-export { VCNService, MCC_CATEGORIES }           from './payments/VCNService';
+export { VCNService }                           from './payments/VCNService';
 export { VPAService }                           from './payments/VPAService';
 export type { VPAApiConfig }                    from './payments/VPAService';
 export {
@@ -98,13 +98,8 @@ export type {
   EvaluationResult,
   // Payments
   PaymentCard,
-  PaymentControls,
   PaymentMethod,
   PaymentMode,
-  VCNIssueParams,
-  VCNIssueStep,
-  VCNIssueResult,
-  IssuedCard,
   SettlementState,
   SettlementParams,
   SettlementResult,

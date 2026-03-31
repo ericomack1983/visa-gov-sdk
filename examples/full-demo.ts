@@ -1,34 +1,32 @@
 // full-demo.ts
-import { VCNService } from '../src/payments/VCNService';
-#import { SettlementService } from '../src/settlement/SettlementService';
-#import { SupplierMatcher } from '../src/procurement/SupplierMatcher';
+import { VCNService, buildSPVRule, buildBlockRule } from '../src/index.js';
 
 async function main() {
   console.log('=== Visa Gov SDK Full Demo ===');
 
-  // 1️⃣ Issue a VCN
+  // 1️⃣ Request a Virtual Card (B2B Virtual Account API)
   const vcnService = new VCNService();
-  console.log('\n[VCN] Issuing a new card...');
-  const { card } = await vcnService.issue({
-    holderName: 'Ministry of Health',
-    brand: 'Visa',
-    type: 'credit',
-    usageType: 'single-use',
-    mccCode: '5047',
-    spendLimit: 48_500,
-    controls: { allowOnline: true, allowIntl: false, allowRecurring: false },
+  console.log('\n[VCN] Requesting a virtual card...');
+  const response = await vcnService.requestVirtualCard({
+    clientId:      'B2BWS_1_1_9999',
+    buyerId:       '9999',
+    messageId:     Date.now().toString(),
+    action:        'A',
+    numberOfCards: '1',
+    proxyPoolId:   'Proxy12345',
+    requisitionDetails: {
+      startDate: '2025-05-11',
+      endDate:   '2025-06-01',
+      timeZone:  'UTC-8',
+      rules: [
+        buildSPVRule({ spendLimitAmount: 48_500, maxAuth: 1, currencyCode: '840', rangeType: 'monthly' }),
+        buildBlockRule('ECOM'),
+        buildBlockRule('ATM'),
+      ],
+    },
   });
-  console.log(`[VCN] Card issued: **** **** **** ${card.last4}, Expiry: ${card.expiry}`);
-
-
-  // 3️⃣ Supplier matching
- // const supplierMatcher = new SupplierMatcher();
-  //console.log('\n[SupplierMatcher] Finding best supplier for $50,000 medical purchase...');
-  //const supplier = await supplierMatcher.findBestSupplier({
-   // criteria: { category: 'medical', location: 'USA' },
-   // amount: 50_000,
-  //});
-  //console.log(`[SupplierMatcher] Best supplier: ${supplier.supplierName} (Score: ${supplier.score})`);
+  const card = response.accounts[0];
+  console.log(`[VCN] Card provisioned: **** **** **** ${card.accountNumber.slice(-4)}, Expiry: ${card.expiryDate}`);
 
   console.log('\n✅ Full demo complete!');
 }

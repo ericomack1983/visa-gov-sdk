@@ -12,19 +12,29 @@ import { VisaNetworkService } from './VisaNetworkService';
 // ─────────────────────────────────────────────────────────────────────────────
 // SupplierMatcher — AI-powered supplier scoring and ranking engine
 //
-// Scores suppliers across five weighted dimensions:
-//   price (28%), delivery (22%), reliability (22%), compliance (17%), risk (11%)
+// Scores suppliers across six weighted dimensions:
+//   price (25%), delivery (20%), reliability (20%), compliance (15%), risk (10%)
+//   visaMatchScore (10%) — derived from Visa Supplier Matching Service matchConfidence
+//
+// visaMatchScore is 0 in a plain evaluate() call (no Visa data).
+// Use evaluateWithVisaCheck() to populate it from the live Visa SMS API.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const DEFAULT_WEIGHTS: ScoringWeights = {
-  price:       0.28,
-  delivery:    0.22,
-  reliability: 0.22,
-  compliance:  0.17,
-  risk:        0.11,
+  price:          0.25,
+  delivery:       0.20,
+  reliability:    0.20,
+  compliance:     0.15,
+  risk:           0.10,
+  visaMatchScore: 0.10,
 };
 
-function computeDimensions(bid: Bid, supplier: Supplier, rfp: RFP): DimensionScores {
+function computeDimensions(
+  bid: Bid,
+  supplier: Supplier,
+  rfp: RFP,
+  visaMatchScore = 0,
+): DimensionScores {
   const price = Math.max(0, Math.min(100,
     (1 - bid.amount / rfp.budgetCeiling) * 100,
   ));
@@ -38,16 +48,17 @@ function computeDimensions(bid: Bid, supplier: Supplier, rfp: RFP): DimensionSco
     Math.min(40, supplier.certifications.length * 10);
   const risk = Math.max(0, 100 - supplier.riskScore);
 
-  return { price, delivery, reliability, compliance, risk };
+  return { price, delivery, reliability, compliance, risk, visaMatchScore };
 }
 
 function computeComposite(dimensions: DimensionScores, weights: ScoringWeights): number {
   return Math.round(
-    dimensions.price       * weights.price       +
-    dimensions.delivery    * weights.delivery    +
-    dimensions.reliability * weights.reliability +
-    dimensions.compliance  * weights.compliance  +
-    dimensions.risk        * weights.risk,
+    dimensions.price          * weights.price          +
+    dimensions.delivery       * weights.delivery       +
+    dimensions.reliability    * weights.reliability    +
+    dimensions.compliance     * weights.compliance     +
+    dimensions.risk           * weights.risk           +
+    dimensions.visaMatchScore * weights.visaMatchScore,
   );
 }
 
@@ -67,9 +78,10 @@ function computeComposite(dimensions: DimensionScores, weights: ScoringWeights):
  * // With custom weights (e.g. price-heavy procurement)
  * const priceFocused = SupplierMatcher.withWeights({ price: 0.50, delivery: 0.15 });
  *
- * // With Visa network registry checks
+ * // With Visa Supplier Match Score (populates visaMatchScore from Visa SMS API)
  * const matcher = new SupplierMatcher({ visaNetwork: VisaNetworkService.sandbox() });
  * const result = await matcher.evaluateWithVisaCheck({ rfp, bids, suppliers, countryCode: 'US' });
+ * console.log(result.rankedBids[0].dimensions.visaMatchScore); // e.g. 95
  * ```
  */
 export class SupplierMatcher {
@@ -108,6 +120,7 @@ export class SupplierMatcher {
   /**
    * Evaluate and rank all bids for an RFP.
    * Returns a full EvaluationResult with ranked bids and an AI narrative.
+   * `visaMatchScore` dimension will be 0 — use evaluateWithVisaCheck() to populate it.
    */
   evaluate(params: { rfp: RFP; bids: Bid[]; suppliers: Supplier[] }): EvaluationResult {
     const { rfp, bids, suppliers } = params;
@@ -128,16 +141,22 @@ export class SupplierMatcher {
 
   /**
    * Score and rank a list of bids.
-   * Returns ScoredBid[] sorted by composite score (rank 1 = best).
+   * @param visaScores — optional map of supplierId → visaMatchScore (0-100)
    */
-  scoreBids(bids: Bid[], suppliers: Supplier[], rfp: RFP): ScoredBid[] {
+  scoreBids(
+    bids: Bid[],
+    suppliers: Supplier[],
+    rfp: RFP,
+    visaScores?: Map<string, number>,
+  ): ScoredBid[] {
     const supplierMap = new Map(suppliers.map((s) => [s.id, s]));
     const scored: ScoredBid[] = [];
 
     for (const bid of bids) {
       const supplier = supplierMap.get(bid.supplierId);
       if (!supplier) continue;
-      const dimensions = computeDimensions(bid, supplier, rfp);
+      const visaMatchScore = visaScores?.get(bid.supplierId) ?? 0;
+      const dimensions = computeDimensions(bid, supplier, rfp, visaMatchScore);
       const composite  = computeComposite(dimensions, this.weights);
       scored.push({ bid, supplier, dimensions, composite, rank: 0, isWinner: false });
     }
@@ -149,9 +168,15 @@ export class SupplierMatcher {
 
   /**
    * Score a single bid/supplier pair against an RFP.
+   * @param visaMatchScore — Visa Supplier Match Score for this supplier (0-100, default 0)
    */
-  scoreBid(bid: Bid, supplier: Supplier, rfp: RFP): Omit<ScoredBid, 'rank' | 'isWinner'> {
-    const dimensions = computeDimensions(bid, supplier, rfp);
+  scoreBid(
+    bid: Bid,
+    supplier: Supplier,
+    rfp: RFP,
+    visaMatchScore = 0,
+  ): Omit<ScoredBid, 'rank' | 'isWinner'> {
+    const dimensions = computeDimensions(bid, supplier, rfp, visaMatchScore);
     const composite  = computeComposite(dimensions, this.weights);
     return { bid, supplier, dimensions, composite };
   }
@@ -167,7 +192,7 @@ export class SupplierMatcher {
     }
     const winner   = ranked[0];
     const runnerUp = ranked[1];
-    const dims     = ['price', 'delivery', 'reliability', 'compliance', 'risk'] as (keyof DimensionScores)[];
+    const dims = ['price', 'delivery', 'reliability', 'compliance', 'risk', 'visaMatchScore'] as (keyof DimensionScores)[];
 
     let topDim = dims[0];
     let topVal = winner.dimensions[dims[0]];
@@ -177,8 +202,10 @@ export class SupplierMatcher {
     let weakVal = runnerUp.dimensions[dims[0]];
     for (const d of dims) if (runnerUp.dimensions[d] < weakVal) { weakDim = d; weakVal = runnerUp.dimensions[d]; }
 
+    const topLabel  = topDim  === 'visaMatchScore' ? 'Visa Supplier Match Score' : topDim;
+    const weakLabel = weakDim === 'visaMatchScore' ? 'Visa Supplier Match Score' : weakDim;
     const gap = winner.composite - runnerUp.composite;
-    return `${winner.supplier.name} leads with a composite score of ${winner.composite}/100, reflecting strong overall performance. Their strongest dimension is ${topDim} (${topVal.toFixed(0)}/100). ${runnerUp.supplier.name} scored ${gap} points lower, primarily due to weak ${weakDim} (${weakVal.toFixed(0)}/100).`;
+    return `${winner.supplier.name} leads with a composite score of ${winner.composite}/100, reflecting strong overall performance. Their strongest dimension is ${topLabel} (${topVal.toFixed(0)}/100). ${runnerUp.supplier.name} scored ${gap} points lower, primarily due to weak ${weakLabel} (${weakVal.toFixed(0)}/100).`;
   }
 
   /**
@@ -187,7 +214,7 @@ export class SupplierMatcher {
    * The override is flagged for audit and compliance review.
    */
   generateOverrideNarrative(selected: ScoredBid, best: ScoredBid): string {
-    const dims = ['price', 'delivery', 'reliability', 'compliance', 'risk'] as (keyof DimensionScores)[];
+    const dims = ['price', 'delivery', 'reliability', 'compliance', 'risk', 'visaMatchScore'] as (keyof DimensionScores)[];
     const gap  = best.composite - selected.composite;
 
     let weakDim  = dims[0];
@@ -204,19 +231,23 @@ export class SupplierMatcher {
       if (diff > edgeGap) { edgeGap = diff; edgeDim = d; }
     }
 
+    const weakLabel = weakDim === 'visaMatchScore' ? 'Visa Supplier Match Score' : weakDim;
+    const edgeLabel = edgeDim === 'visaMatchScore' ? 'Visa Supplier Match Score' : edgeDim;
+
     const edgeLine = edgeDim && edgeGap > 2
-      ? ` Note: ${selected.supplier.name} does edge ahead on ${edgeDim} (+${edgeGap.toFixed(0)} pts), but this dimension carries less weight in the composite model.`
+      ? ` Note: ${selected.supplier.name} does edge ahead on ${edgeLabel} (+${edgeGap.toFixed(0)} pts), but this dimension carries less weight in the composite model.`
       : '';
 
-    return `⚠ Manual override detected. You selected ${selected.supplier.name} (rank #${selected.rank}, ${selected.composite}/100), bypassing the AI recommendation.\n\n${best.supplier.name} scores ${gap} points higher at ${best.composite}/100. The largest gap is in ${weakDim}: ${best.supplier.name} scores ${best.dimensions[weakDim].toFixed(0)} vs ${selected.dimensions[weakDim].toFixed(0)} for ${selected.supplier.name}.${edgeLine}\n\nThis override will be logged for audit and compliance review.`;
+    return `⚠ Manual override detected. You selected ${selected.supplier.name} (rank #${selected.rank}, ${selected.composite}/100), bypassing the AI recommendation.\n\n${best.supplier.name} scores ${gap} points higher at ${best.composite}/100. The largest gap is in ${weakLabel}: ${best.supplier.name} scores ${best.dimensions[weakDim].toFixed(0)} vs ${selected.dimensions[weakDim].toFixed(0)} for ${selected.supplier.name}.${edgeLine}\n\nThis override will be logged for audit and compliance review.`;
   }
 
   /**
    * Evaluate bids after automatically checking each supplier against the
    * Visa Supplier Match Service registry.
    *
-   * Suppliers confirmed in the Visa network have their registry status
-   * available in the returned `visaChecks` map.
+   * The `matchConfidence` returned by Visa is mapped to a `visaMatchScore`
+   * (High=95, Medium=70, Low=45, None=0) and fed into the scoring model as
+   * the `visaMatchScore` dimension.
    *
    * Requires a `visaNetwork` service injected at construction time,
    * or passed directly as `options.visaNetwork`.
@@ -229,15 +260,14 @@ export class SupplierMatcher {
    *   rfp,
    *   bids,
    *   suppliers,
-   *   countryCode: 'US',  // ISO country code for Visa registry lookup
+   *   countryCode: 'US',
    * });
    *
    * for (const sb of result.rankedBids) {
-   *   const reg = sb.supplier.visaNetwork;
    *   console.log(
    *     sb.supplier.name,
-   *     '| registered:', reg?.isRegistered,
-   *     '| MCC:', reg?.mcc,
+   *     '| Visa Match Score:', sb.dimensions.visaMatchScore,
+   *     '| MCC:', result.visaChecks.get(sb.supplier.id)?.mcc,
    *   );
    * }
    * ```
@@ -265,20 +295,41 @@ export class SupplierMatcher {
       params.countryCode ?? 'US',
     );
 
-    // Build a lookup map: supplierId → enriched supplier
-    const enrichedMap = new Map(enriched.map((s) => [s.id, s]));
-
-    // Run standard evaluation with Visa-verified supplier data
-    const result = this.evaluate({
-      rfp:       params.rfp,
-      bids:      params.bids,
-      suppliers: params.suppliers,
-    });
+    // Build visaScores map: supplierId → confidenceScore (0-100)
+    const visaScores = new Map(
+      enriched.map((s) => [s.id, s.visaNetwork.confidenceScore]),
+    );
 
     // Build visaChecks map: supplierId → VisaNetworkCheckResult
     const visaChecks = new Map(
       enriched.map((s) => [s.id, s.visaNetwork]),
     );
+
+    // Score bids with Visa match scores injected into the visaMatchScore dimension
+    const ranked = this.scoreBids(params.bids, params.suppliers, params.rfp, visaScores);
+
+    if (ranked.length === 0) {
+      throw new Error(`No valid bids found for RFP ${params.rfp.id}`);
+    }
+
+    // Annotate ScoredBids with visaAcceptMark
+    for (const sb of ranked) {
+      const check = visaChecks.get(sb.supplier.id);
+      if (check) sb.visaAcceptMark = check.visaAcceptMark;
+    }
+
+    const visaAcceptedSupplierIds = enriched
+      .filter((s) => s.visaNetwork.visaAcceptMark)
+      .map((s) => s.id);
+
+    const result: EvaluationResult = {
+      rfpId:                   params.rfp.id,
+      rankedBids:              ranked,
+      winner:                  ranked[0],
+      evaluatedAt:             new Date().toISOString(),
+      narrative:               this.generateNarrative(ranked),
+      visaAcceptedSupplierIds,
+    };
 
     return { ...result, visaChecks };
   }
