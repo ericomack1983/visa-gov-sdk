@@ -10,6 +10,7 @@ import type {
   VCNRequestResponse,
   VCNIssuedAccount,
 } from '../types/vcn-request';
+import { resolveFetch, VisaTLSMaterials } from '../client';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VCNService — Virtual Card Number issuance via Visa VCN API (api.visa.com/vcn/v2/issue)
@@ -177,24 +178,48 @@ export class VCNService {
   async requestVirtualCard(
     payload: VCNRequestPayload,
     options?: {
-      /** Visa API base URL (default: sandbox simulation — no HTTP call). */
+      /**
+       * Visa API base URL (default: sandbox simulation — no HTTP call).
+       * Sandbox / Certification: https://sandbox.api.visa.com
+       */
       baseUrl?: string;
-      /** HTTP Basic auth — required when baseUrl is provided. */
+      /**
+       * HTTP Basic auth credentials.
+       * Found in: Project → Credentials → Two-Way SSL (Username + Password).
+       * Required when baseUrl is provided.
+       */
       credentials?: { userId: string; password: string };
-      /** Injectable fetch — defaults to global fetch. */
+      /**
+       * Two-Way SSL (mTLS) materials for the Visa Developer Platform.
+       * Required in Sandbox and Certification environments.
+       *
+       *   cert — download from Project → Credentials → Two-Way SSL
+       *   key  — private key generated at CSR submission time
+       *   ca   — Common Certificates from Two-Way SSL section (optional)
+       */
+      tls?: VisaTLSMaterials;
+      /**
+       * Injectable fetch override — bypasses mTLS auto-detection.
+       * Use for unit tests or custom HTTP clients.
+       */
       fetch?: typeof fetch;
     },
   ): Promise<VCNRequestResponse> {
     // ── Live mode ─────────────────────────────────────────────────────────────
     if (options?.baseUrl) {
-      const { baseUrl, credentials, fetch: _fetch = fetch } = options;
+      const { baseUrl, credentials, tls, fetch: explicitFetch } = options;
+
+      const _fetch = resolveFetch({
+        fetch: explicitFetch as ((url: string, init: RequestInit) => Promise<Response>) | undefined,
+        ...tls,
+      });
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         Accept: 'application/json',
       };
       if (credentials) {
-        const token = btoa(`${credentials.userId}:${credentials.password}`);
+        const token = Buffer.from(`${credentials.userId}:${credentials.password}`).toString('base64');
         headers['Authorization'] = `Basic ${token}`;
       }
 

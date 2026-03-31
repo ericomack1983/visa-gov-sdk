@@ -128,26 +128,82 @@ export interface VisaNetworkCheckResult {
 }
 
 /**
- * Configuration for connecting to the Visa SMS API.
+ * Configuration for connecting to the Visa Developer Platform APIs.
+ *
+ * Visa B2B APIs require Two-Way SSL (mutual TLS) in both Sandbox and
+ * Certification environments.  Provide `cert` + `key` (and optionally `ca`)
+ * to enable mTLS.  `userId` and `password` are still sent as HTTP Basic
+ * Auth alongside the certificate.
+ *
+ * How to obtain credentials from the Visa Developer Center:
+ *  - `baseUrl`   — use `https://sandbox.api.visa.com` for Sandbox/Certification.
+ *  - `userId`    — Project → Credentials → Two-Way SSL → copy Username.
+ *  - `password`  — Project → Credentials → Two-Way SSL → expand cert → copy Password.
+ *  - `cert`      — Project → Credentials → Two-Way SSL → Download Certificate (PEM).
+ *  - `key`       — the private key you generated when submitting your CSR.
+ *  - `ca`        — Common Certificates download at the bottom of Two-Way SSL section.
  */
 export interface VisaApiConfig {
   /**
    * Base URL for the Visa API.
-   * Sandbox:    https://sandbox.api.visa.com
-   * Production: https://api.visa.com
+   * Sandbox / Certification: https://sandbox.api.visa.com
+   * Production:              https://api.visa.com
    */
   baseUrl: string;
 
-  /** Visa API user ID (from Visa Developer Center project) */
+  /**
+   * Visa API username.
+   * Found in: Project → Credentials → Two-Way SSL → Username field.
+   */
   userId: string;
 
-  /** Visa API password (from Visa Developer Center project) */
+  /**
+   * Visa API password.
+   * Found in: Project → Credentials → Two-Way SSL → expand Certificate → Password.
+   */
   password: string;
 
   /**
-   * Optional: inject a custom fetch implementation.
-   * Defaults to the global `fetch` (Node 18+ / browser).
-   * Pass `node-fetch` or a test stub here if needed.
+   * Client certificate PEM string (Two-Way SSL).
+   * Download from: Project → Credentials → Two-Way SSL → Download Certificate.
+   *
+   * @example
+   * ```ts
+   * import fs from 'fs';
+   * cert: fs.readFileSync('./certs/visa-client.crt', 'utf-8')
+   * ```
+   */
+  cert?: string;
+
+  /**
+   * Private key PEM string.
+   * This is the key you generated locally before submitting your CSR to Visa.
+   *
+   * @example
+   * ```ts
+   * import fs from 'fs';
+   * key: fs.readFileSync('./certs/visa-client.key', 'utf-8')
+   * ```
+   */
+  key?: string;
+
+  /**
+   * CA / Common Certificates PEM bundle (optional but recommended).
+   * Available at the bottom of the Two-Way SSL section in Visa Developer Center.
+   * Enables full certificate-chain validation against the Visa root CA.
+   *
+   * @example
+   * ```ts
+   * import fs from 'fs';
+   * ca: fs.readFileSync('./certs/visa-ca-bundle.crt', 'utf-8')
+   * ```
+   */
+  ca?: string;
+
+  /**
+   * Optional: inject a custom fetch implementation (overrides mTLS auto-detection).
+   * Defaults to mTLS fetch when `cert` + `key` are provided, otherwise global `fetch`.
+   * Pass a test stub here to mock API calls in unit tests.
    */
   fetch?: (url: string, init: RequestInit) => Promise<Response>;
 }

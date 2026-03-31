@@ -4,3 +4,6 @@ dist/
 .env
 .env.local
 .DS_Store
+
+# Visa credentials — never commit private keys, certs, or credentials
+certs/

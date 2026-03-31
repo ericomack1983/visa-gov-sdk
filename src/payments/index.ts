@@ -4,5 +4,6 @@ export {
   SettlementSession,
   getStepLabel,
   USD_STEP_DELAY_MS,
-  USDC_STEP_DELAY_MS,
 } from './SettlementService';
+export { VPAService } from './VPAService';
+export type { VPAApiConfig } from './VPAService';

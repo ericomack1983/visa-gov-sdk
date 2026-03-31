@@ -13,8 +13,14 @@
  * ```
  */
 
+// ── Visa Developer Platform — mTLS client ────────────────────────────────────
+export { createMtlsFetch }                      from './client';
+export type { VisaTLSMaterials }                from './client';
+
 // ── Payments ──────────────────────────────────────────────────────────────────
 export { VCNService, MCC_CATEGORIES }           from './payments/VCNService';
+export { VPAService }                           from './payments/VPAService';
+export type { VPAApiConfig }                    from './payments/VPAService';
 export {
   SettlementService,
   SettlementSession,
@@ -22,6 +28,7 @@ export {
   USD_STEP_DELAY_MS,
 }                                               from './payments/SettlementService';
 export { VPCService }                           from './payments/VPCService';
+export type { VPCApiConfig }                    from './payments/VPCService';
 
 // ── Procurement ───────────────────────────────────────────────────────────────
 export { SupplierMatcher, DEFAULT_WEIGHTS }     from './procurement/SupplierMatcher';
@@ -37,6 +44,48 @@ export type {
   VisaApiStatus,
 }                                               from './types/visa-api';
 export { VISA_SMS_STATUS_CODES }                from './types/visa-api';
+
+// ── VPA (Visa B2B Virtual Account Payment) ────────────────────────────────────
+export type {
+  VPACurrencyCode,
+  VPADateFormat,
+  VPALanguageCode,
+  VPAApprovalWorkflowCode,
+  VPAPaymentNotificationConfig,
+  VPAAuthorizationControlConfig,
+  VPACreateBuyerParams,
+  VPABuyer,
+  VPAUpdateBuyerParams,
+  VPACreateBuyerTemplateParams,
+  VPABuyerTemplate,
+  VPAUpdateBuyerTemplateParams,
+  VPAAddFundingAccountParams,
+  VPAFundingAccount,
+  VPASecurityCode,
+  VPAPaymentControlRule,
+  VPARequisitionDetails,
+  VPARequestVirtualAccountParams,
+  VPAVirtualAccount,
+  VPAAccountStatus,
+  VPAManagePaymentControlsParams,
+  VPAPaymentControls,
+  VPACreateProxyPoolParams,
+  VPAUpdateProxyPoolParams,
+  VPAProxyPool,
+  VPAManageProxyPoolParams,
+  VPAPaymentDeliveryMethod,
+  VPASupplierAccountModel,
+  VPACreateSupplierParams,
+  VPAUpdateSupplierParams,
+  VPASupplier,
+  VPAManageSupplierAccountParams,
+  VPAProcessPaymentParams,
+  VPAPaymentStatus,
+  VPAPayment,
+  VPAPaymentUrl,
+  VPAPaymentRequisitionParams,
+  VPARequisitionResponse,
+}                                               from './types/vpa';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type {

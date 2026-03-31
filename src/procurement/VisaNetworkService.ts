@@ -7,6 +7,7 @@ import {
   VISA_SMS_STATUS_CODES,
 } from '../types/visa-api';
 import { Supplier } from '../types';
+import { resolveFetch } from '../client';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // VisaNetworkService — Visa Supplier Match Service (SMS) integration
@@ -240,7 +241,7 @@ export class VisaNetworkService {
     const url = `${cfg.baseUrl}${SMS_ENDPOINT}`;
 
     const credentials = Buffer.from(`${cfg.userId}:${cfg.password}`).toString('base64');
-    const fetchFn     = cfg.fetch ?? fetch;
+    const fetchFn     = resolveFetch(cfg);
 
     const response = await fetchFn(url, {
       method:  'POST',

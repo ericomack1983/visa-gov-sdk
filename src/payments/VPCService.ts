@@ -27,6 +27,7 @@ import type {
   VPCSupplierValidation,
   VPCValidationStatus,
 } from '../types/vpc';
+import { resolveFetch } from '../client';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -61,9 +62,53 @@ function createStore(): SandboxStore {
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
-interface VPCApiConfig {
+/**
+ * Configuration for connecting to the Visa VPC API.
+ *
+ * Visa Developer Platform requires Two-Way SSL (mutual TLS) in Sandbox and
+ * Certification environments.  Provide `cert` + `key` to enable mTLS
+ * automatically; supply `ca` to validate the full Visa certificate chain.
+ *
+ * Credential sources in Visa Developer Center:
+ *   baseUrl     — https://sandbox.api.visa.com  (Sandbox/Certification)
+ *   userId      — Project → Credentials → Two-Way SSL → Username
+ *   password    — Project → Credentials → Two-Way SSL → expand cert → Password
+ *   cert        — Project → Credentials → Two-Way SSL → Download Certificate (PEM)
+ *   key         — private key generated when submitting your CSR
+ *   ca          — Common Certificates at bottom of Two-Way SSL section (PEM)
+ */
+export interface VPCApiConfig {
+  /**
+   * Visa API base URL.
+   * Sandbox / Certification: https://sandbox.api.visa.com
+   * Production:              https://api.visa.com
+   */
   baseUrl: string;
+
+  /**
+   * HTTP Basic auth credentials (Username + Password from Two-Way SSL section).
+   */
   credentials?: { userId: string; password: string };
+
+  /**
+   * Client certificate PEM (Two-Way SSL — download from Visa Developer Center).
+   */
+  cert?: string;
+
+  /**
+   * Private key PEM (generated locally at CSR submission time).
+   */
+  key?: string;
+
+  /**
+   * CA / Common Certificates PEM bundle (optional — bottom of Two-Way SSL section).
+   */
+  ca?: string;
+
+  /**
+   * Custom fetch override — bypasses mTLS auto-detection.
+   * Useful for unit tests or custom HTTP middleware.
+   */
   fetch?: typeof fetch;
 }
 
@@ -78,10 +123,15 @@ async function apiRequest<T>(
     Accept: 'application/json',
   };
   if (config.credentials) {
-    const token = btoa(`${config.credentials.userId}:${config.credentials.password}`);
+    const token = Buffer.from(`${config.credentials.userId}:${config.credentials.password}`).toString('base64');
     headers['Authorization'] = `Basic ${token}`;
   }
-  const _fetch = config.fetch ?? fetch;
+  const _fetch = resolveFetch({
+    fetch: config.fetch as ((url: string, init: RequestInit) => Promise<Response>) | undefined,
+    cert: config.cert,
+    key:  config.key,
+    ca:   config.ca,
+  });
   const res = await _fetch(`${config.baseUrl}${path}`, {
     method,
     headers,
