@@ -4,7 +4,7 @@ TypeScript SDK for Visa Government Procurement — two capabilities in one packa
 
 | Capability | What it does |
 |---|---|
-| **B2B Virtual Account Payments** | Virtual Card Number (VCN) issuance + multi-rail settlement (USD / Card) |
+| **B2B Virtual Account Payments** | CREATE BUYER +ADD FUNDING ACCOUNT (Budget Source) + CREATE PROXY POOL (Virtual Card Pool) + CREATE SUPPLIERS (Vendors) +  REQUEST / MANAGE VIRTUAL CARDS + APPLY VPC (Visa Payment Controls) + PROCESS PAYMENTS (SIP/BIP) + RECONCILIATION & TRACKING + MAINTENANCE OPERATIONS |
 | **Supplier Matching** | AI-powered bid evaluation with live Visa registry verification via the Visa Supplier Match Service (SMS) API |
 
 ---
