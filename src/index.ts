@@ -29,6 +29,7 @@ export {
 }                                               from './payments/SettlementService';
 export { VPCService }                           from './payments/VPCService';
 export type { VPCApiConfig }                    from './payments/VPCService';
+export { B2BPaymentService }                    from './payments/B2BPaymentService';
 
 // ── Procurement ───────────────────────────────────────────────────────────────
 export { SupplierMatcher, DEFAULT_WEIGHTS }     from './procurement/SupplierMatcher';
@@ -85,6 +86,15 @@ export type {
   VPAPaymentUrl,
   VPAPaymentRequisitionParams,
   VPARequisitionResponse,
+  // BIP
+  BIPInitiateParams,
+  BIPVirtualCard,
+  BIPPayment,
+  // SIP
+  SIPSubmitParams,
+  SIPRequisition,
+  SIPApproveParams,
+  SIPApprovalResult,
 }                                               from './types/vpa';
 
 // ── Types ─────────────────────────────────────────────────────────────────────

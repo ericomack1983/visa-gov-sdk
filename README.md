@@ -41,6 +41,7 @@ graph TB
         direction TB
         VCN["💳 VCNService\nVirtual Card Request\nPOST /vpa/v1/cards/provisioning"]
         VPA["🏦 VPAService\nB2B Account Management\n/vpa/v1/*"]
+        B2B["🔄 B2BPaymentService\nBIP · SIP Flows\n/vpa/v1/paymentService/*"]
         SMS["🔍 VisaNetworkService\nSupplier Matching\nPOST /visasuppliermatchingservice/v1/search"]
         AI["🤖 SupplierMatcher\nAI Bid Evaluation\n6-dimension scoring"]
         VPC["🔒 VPCService\nPayment Controls\n/vpc/v1/*"]
@@ -50,10 +51,12 @@ graph TB
 
     GOV["🏛️ Government Agency"] --> VCN
     GOV --> AI
+    GOV --> B2B
     VCN --> VISA["Visa Network"]
     SMS --> VISA
     VPC --> VISA
     VPA --> VISA
+    B2B --> VISA
     AI --> SMS
 ```
 
@@ -81,7 +84,8 @@ Run the full test suite:
 ```bash
 npx tsx test-sdk.ts       # 100 assertions — all services
 node test-visa-sms.js     # live Visa SMS API — 11 assertions
-node test-vpa.js          # live Visa VPA API
+node test-vpa.js          # live Visa VPA API — 28 endpoints
+node test-bip-sip.js      # live Visa BIP & SIP — 10 endpoints
 node helloworld.js        # mTLS connectivity check
 ```
 
@@ -93,11 +97,12 @@ node helloworld.js        # mTLS connectivity check
 |---|---------|-------------|---------|
 | [1](#1--b2b-virtual-account-payments) | **B2B Virtual Account Payments** | Issue virtual cards with embedded spending rules | `POST /vpa/v1/cards/provisioning` |
 | [2](#2--full-vpa-account-management) | **Full VPA Account Management** | Buyers, funding accounts, proxy pools, suppliers, payments | `/vpa/v1/*` |
-| [3](#3--visa-supplier-match-service-sms) | **Visa Supplier Match Service** | Verify suppliers in the Visa network, get match score | `POST /visasuppliermatchingservice/v1/search` |
-| [4](#4--ai-supplier-evaluation) | **AI Supplier Evaluation** | Score & rank bids across 6 weighted dimensions | SDK-internal |
-| [5](#5--visa-b2b-payment-controls-vpc) | **Visa B2B Payment Controls** | Real-time spending rules on every virtual card | `/vpc/v1/*` |
-| [6](#6--ipc--intelligent-payment-controls-gen-ai) | **IPC — Gen-AI Rules** | Natural language → payment control rules | `POST /vpc/v1/ipc/suggest` |
-| [7](#7--settlement) | **Settlement** | Multi-rail payment settlement with streaming | SDK-internal |
+| [3](#3--bip--sip-payment-flows) | **BIP & SIP Payment Flows** | Buyer-initiated and Supplier-initiated B2B payment flows | `POST /vpa/v1/paymentService/*` |
+| [4](#4--visa-supplier-match-service-sms) | **Visa Supplier Match Service** | Verify suppliers in the Visa network, get match score | `POST /visasuppliermatchingservice/v1/search` |
+| [5](#5--ai-supplier-evaluation) | **AI Supplier Evaluation** | Score & rank bids across 6 weighted dimensions | SDK-internal |
+| [6](#6--visa-b2b-payment-controls-vpc) | **Visa B2B Payment Controls** | Real-time spending rules on every virtual card | `/vpc/v1/*` |
+| [7](#7--ipc--intelligent-payment-controls-gen-ai) | **IPC — Gen-AI Rules** | Natural language → payment control rules | `POST /vpc/v1/ipc/suggest` |
+| [8](#8--settlement) | **Settlement** | Multi-rail payment settlement with streaming | SDK-internal |
 
 ---
 
@@ -273,7 +278,206 @@ const payment = await vpa.Payment.processPayment({
 
 ---
 
-## 3 · Visa Supplier Match Service (SMS)
+## 3 · BIP & SIP Payment Flows
+
+> **The problem:** Not all B2B payments start the same way. Sometimes the *buyer* wants to push a locked virtual card to a supplier before any charge is made (BIP). Other times the *supplier* presents an invoice and waits for the buyer to authorise it (SIP). Both flows are built on the same Visa VPA rails but follow opposite directions of initiation.
+>
+> **The solution:** `B2BPaymentService` exposes two focused sub-services — `.BIP` and `.SIP` — each modelling the exact API call sequence Visa defines for that delivery method.
+
+### BIP — Buyer Initiated Payment
+
+The buyer is in full control. They provision a single-use virtual card locked to the invoice amount and push it to the supplier before any charge happens.
+
+```
+  BUYER                          VISA API                        SUPPLIER
+    │                               │                               │
+    │  initiate({ supplierId,       │                               │
+    │    paymentAmount, invoice })  │                               │
+    │──────────────────────────────►│  POST /paymentService/        │
+    │                               │    processPayments            │
+    │                               │    (paymentDeliveryMethod:BIP)│
+    │                               │◄──────────────────────────────│
+    │◄──────────────────────────────│  paymentId + virtualCard PAN  │
+    │                               │                               │
+    │  getPaymentDetailURL()        │                               │
+    │──────────────────────────────►│  POST /getPaymentDetailURL    │
+    │◄── { url, expiresAt } ───────│                               │
+    │                               │                               │
+    │  Share URL with supplier ─────┼──────────────────────────────►│
+    │                               │                               │
+    │                               │  Supplier charges virtual card│
+    │                               │◄──────────────────────────────│
+    │                               │  Visa enforces spending rules │
+    │◄──────────────────────────────│  Transaction settled ✅        │
+```
+
+```mermaid
+sequenceDiagram
+    participant Buyer as 🏛️ Buyer (Gov Agency)
+    participant SDK   as B2BPaymentService.BIP
+    participant Visa  as Visa API
+    participant Supp  as 🏢 Supplier
+
+    Buyer->>SDK: BIP.initiate({ supplierId, paymentAmount, invoiceNumber })
+    SDK->>Visa: POST /vpa/v1/paymentService/processPayments<br/>(paymentDeliveryMethod: BIP)
+    Visa-->>SDK: { paymentId, accountNumber, expiryDate }
+    SDK->>Visa: POST /vpa/v1/paymentService/getPaymentDetailURL
+    Visa-->>SDK: { url, expiresAt }
+    SDK-->>Buyer: BIPPayment { virtualCard, paymentDetailUrl }
+    Buyer->>Supp: Share paymentDetailUrl
+    Supp->>Visa: Charge virtual card
+    Visa-->>Buyer: Settlement notification ✅
+```
+
+```ts
+import { B2BPaymentService } from '@visa-gov/sdk';
+
+const b2b = B2BPaymentService.sandbox();  // or B2BPaymentService.live(apiConfig)
+
+// Step 1 — Buyer provisions a virtual card for this specific invoice
+const payment = await b2b.BIP.initiate({
+  messageId:     crypto.randomUUID(),
+  clientId:      'B2BWS_1_1_9999',
+  buyerId:       '9999',
+  supplierId:    'SUPP-001',
+  paymentAmount: 4_750.00,
+  currencyCode:  '840',           // USD
+  invoiceNumber: 'INV-2026-042',
+  memo:          'Q2 medical equipment',
+});
+
+console.log(payment.virtualCard?.accountNumber);  // 4xxx xxxx xxxx xxxx
+console.log(payment.virtualCard?.expiryDate);     // MM/YYYY
+console.log(payment.paymentDetailUrl);            // supplier card-entry URL
+console.log(payment.status);                      // 'pending'
+
+// Step 2 — Resend card notification to supplier if needed
+await b2b.BIP.resend({
+  messageId: crypto.randomUUID(),
+  clientId:  'B2BWS_1_1_9999',
+  paymentId: payment.paymentId,
+});
+
+// Step 3 — Check current payment status
+const status = await b2b.BIP.getStatus({
+  messageId: crypto.randomUUID(),
+  clientId:  'B2BWS_1_1_9999',
+  paymentId: payment.paymentId,
+});
+
+// Step 4 — Cancel if unused (only while status is 'pending' or 'unmatched')
+await b2b.BIP.cancel({
+  messageId: crypto.randomUUID(),
+  clientId:  'B2BWS_1_1_9999',
+  paymentId: payment.paymentId,
+});
+```
+
+---
+
+### SIP — Supplier Initiated Payment
+
+The supplier initiates. They submit a payment requisition with their invoice; Visa pre-provisions a virtual account for them and notifies the buyer. The buyer reviews and approves (or rejects) through the SDK.
+
+```
+  SUPPLIER                       VISA API                         BUYER
+    │                               │                               │
+    │  Submit requisition           │                               │
+    │  (invoice, amount, dates) ───►│  POST /requisitionService     │
+    │                               │  (paymentDeliveryMethod: SIP) │
+    │◄── { requisitionId,          │                               │
+    │       virtualAccount } ───────│  Notify buyer of pending req ►│
+    │                               │                               │
+    │                               │  Buyer reviews invoice        │
+    │                               │                               │
+    │                               │◄──────────────────────────────│
+    │                               │  POST /processPayments        │
+    │                               │  (requisitionId, SIP)         │
+    │◄──────────────────────────────│  { paymentId, status: approved}
+    │  Receive payment on           │                               │
+    │  virtual account ✅            │                               │
+```
+
+```mermaid
+sequenceDiagram
+    participant Supp  as 🏢 Supplier
+    participant SDK   as B2BPaymentService.SIP
+    participant Visa  as Visa API
+    participant Buyer as 🏛️ Buyer (Gov Agency)
+
+    Supp->>SDK: SIP.submitRequest({ invoiceNumber, requestedAmount, startDate, endDate })
+    SDK->>Visa: POST /vpa/v1/requisitionService<br/>(paymentDeliveryMethod: SIP)
+    Visa-->>SDK: { requisitionId, accountNumber, expiryDate }
+    SDK-->>Supp: SIPRequisition { status: 'pending_approval', virtualAccount }
+    Visa-->>Buyer: Notification — new payment request
+    Buyer->>SDK: SIP.approve({ requisitionId, approvedAmount })
+    SDK->>Visa: POST /vpa/v1/paymentService/processPayments<br/>(requisitionId, SIP)
+    Visa-->>SDK: { paymentId, status: approved }
+    SDK-->>Buyer: SIPApprovalResult ✅
+    Visa-->>Supp: Funds on virtual account
+```
+
+```ts
+import { B2BPaymentService } from '@visa-gov/sdk';
+
+const b2b = B2BPaymentService.sandbox();
+
+// ── Supplier side ─────────────────────────────────────────────────────────────
+
+const req = await b2b.SIP.submitRequest({
+  messageId:       crypto.randomUUID(),
+  clientId:        'B2BWS_1_1_9999',
+  supplierId:      'SUPP-001',
+  buyerId:         '9999',
+  requestedAmount: 2_300.00,
+  currencyCode:    '840',
+  invoiceNumber:   'INV-SUPP-2026-007',
+  startDate:       '2026-04-01',
+  endDate:         '2026-04-30',
+});
+
+console.log(req.requisitionId);                   // SIP-REQ-XXXXXXXX
+console.log(req.virtualAccount?.accountNumber);   // pre-provisioned card
+console.log(req.status);                          // 'pending_approval'
+
+// ── Buyer side ────────────────────────────────────────────────────────────────
+
+// Approve and trigger settlement
+const result = await b2b.SIP.approve({
+  messageId:      crypto.randomUUID(),
+  clientId:       'B2BWS_1_1_9999',
+  buyerId:        '9999',
+  requisitionId:  req.requisitionId,
+  approvedAmount: 2_300.00,
+  currencyCode:   '840',
+});
+
+console.log(result.paymentId);   // SIP-PAY-XXXXXXXX
+console.log(result.status);      // 'approved'
+console.log(result.approvedAt);  // ISO timestamp
+
+// Or reject the request
+await b2b.SIP.reject({
+  messageId:     crypto.randomUUID(),
+  clientId:      'B2BWS_1_1_9999',
+  requisitionId: req.requisitionId,
+});
+```
+
+### BIP vs SIP — when to use which
+
+| | BIP (Buyer Initiated) | SIP (Supplier Initiated) |
+|---|---|---|
+| **Who starts it** | Buyer | Supplier |
+| **Virtual card direction** | Buyer provisions → pushed to supplier | VPA provisions → issued to supplier |
+| **Control** | Full buyer control before any charge | Supplier drives; buyer approves |
+| **Use case** | Pre-approved purchases, POs, fixed-cost contracts | Invoice-driven payments, milestone billing |
+| **Visa endpoint** | `processPayments` + `getPaymentDetailURL` | `requisitionService` + `processPayments` |
+| **SDK method** | `b2b.BIP.initiate()` | `b2b.SIP.submitRequest()` + `.approve()` |
+
+---
+
+## 4 · Visa Supplier Match Service (SMS)
 
 > **The problem:** Before paying a supplier with a Visa commercial card, you need to know if they actually accept Visa. More importantly, you want to know *how confidently* they're registered — a supplier with High confidence gets a 95/100 score; None gets 0.
 >
@@ -363,7 +567,7 @@ const visa = new VisaNetworkService({
 
 ---
 
-## 4 · AI Supplier Evaluation
+## 5 · AI Supplier Evaluation
 
 > **The problem:** Government procurement officers receive dozens of bids. Comparing them manually is slow, inconsistent, and prone to bias or corruption.
 >
@@ -466,7 +670,7 @@ sequenceDiagram
 
 ---
 
-## 5 · Visa B2B Payment Controls (VPC)
+## 6 · Visa B2B Payment Controls (VPC)
 
 > **The problem:** Issuing a virtual card is only half the story. Without real-time controls, the card could be used at the wrong merchant, in the wrong country, over the wrong amount, or at 3am on a Sunday.
 >
@@ -565,7 +769,7 @@ const validation = await vpc.SupplierValidation.registerSupplier({
 
 ---
 
-## 6 · IPC — Intelligent Payment Controls (Gen-AI)
+## 7 · IPC — Intelligent Payment Controls (Gen-AI)
 
 > **The problem:** Configuring payment control rules manually requires knowing all the right rule codes, spending limits, MCC codes, and channel flags. Most procurement officers don't have that expertise.
 >
@@ -671,7 +875,7 @@ With IPC, they type one sentence.
 
 ---
 
-## 7 · Settlement
+## 8 · Settlement
 
 > After a virtual card purchase, the payment needs to flow from the government agency's funding account to the supplier. `SettlementService` models the full Visa settlement lifecycle with streaming state for real-time UI updates.
 

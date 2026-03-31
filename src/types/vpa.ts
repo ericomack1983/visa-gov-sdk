@@ -353,3 +353,114 @@ export interface VPARequisitionResponse {
   createdAt?: string;
   [key: string]: unknown;
 }
+
+// ── BIP (Buyer Initiated Payment) ─────────────────────────────────────────────
+
+/**
+ * Parameters for initiating a Buyer-Initiated Payment (BIP).
+ *
+ * The buyer provisions a single-use virtual card locked to this exact invoice
+ * amount and pushes it to the supplier through the VPA payment network.
+ */
+export interface BIPInitiateParams {
+  messageId: string;
+  clientId: string;
+  buyerId: string;
+  supplierId: string;
+  paymentAmount: number;
+  /** ISO 4217 numeric currency code, e.g. "840" for USD. */
+  currencyCode: VPACurrencyCode;
+  invoiceNumber?: string;
+  memo?: string;
+  /** Payment value date (YYYY-MM-DD). Defaults to today. */
+  paymentDate?: string;
+  /** Days the virtual card remains valid. Defaults to 30. */
+  validDays?: number;
+}
+
+/** A virtual card issued and pushed to the supplier as part of a BIP. */
+export interface BIPVirtualCard {
+  accountNumber: string;
+  expiryDate: string;
+  cvv2?: string;
+}
+
+/** Result of a Buyer-Initiated Payment instruction. */
+export interface BIPPayment {
+  paymentId: string;
+  buyerId: string;
+  supplierId: string;
+  paymentAmount: number;
+  currencyCode: VPACurrencyCode;
+  deliveryMethod: 'BIP';
+  status: VPAPaymentStatus;
+  /** Virtual card provisioned for this payment (present in sandbox; may be masked in live). */
+  virtualCard?: BIPVirtualCard;
+  /** Time-limited URL where the supplier can view card details. */
+  paymentDetailUrl?: string;
+  invoiceNumber?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// ── SIP (Supplier Initiated Payment) ─────────────────────────────────────────
+
+/**
+ * Parameters for submitting a Supplier-Initiated Payment request (SIP).
+ *
+ * The supplier submits an invoice/requisition; the VPA network provisions a
+ * virtual account for the supplier and notifies the buyer for approval.
+ */
+export interface SIPSubmitParams {
+  messageId: string;
+  clientId: string;
+  supplierId: string;
+  buyerId: string;
+  requestedAmount: number;
+  /** ISO 4217 numeric currency code, e.g. "840" for USD. */
+  currencyCode: VPACurrencyCode;
+  invoiceNumber?: string;
+  description?: string;
+  /** Requisition validity start date (YYYY-MM-DD). */
+  startDate: string;
+  /** Requisition validity end date (YYYY-MM-DD). */
+  endDate: string;
+  timeZone?: string;
+}
+
+/** A supplier payment requisition awaiting buyer approval. */
+export interface SIPRequisition {
+  requisitionId: string;
+  supplierId: string;
+  buyerId: string;
+  requestedAmount: number;
+  currencyCode: VPACurrencyCode;
+  status: 'pending_approval' | 'approved' | 'rejected' | 'settled';
+  /** Pre-provisioned virtual account issued to the supplier. */
+  virtualAccount?: { accountNumber: string; expiryDate: string };
+  invoiceNumber?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+/** Parameters for the buyer to approve a pending SIP requisition. */
+export interface SIPApproveParams {
+  messageId: string;
+  clientId: string;
+  buyerId: string;
+  requisitionId: string;
+  /** Override amount — defaults to the supplier's requested amount. */
+  approvedAmount?: number;
+  currencyCode?: VPACurrencyCode;
+  memo?: string;
+}
+
+/** Result returned when a buyer approves a SIP requisition. */
+export interface SIPApprovalResult {
+  requisitionId: string;
+  paymentId: string;
+  status: 'approved' | 'processing' | 'settled';
+  approvedAmount: number;
+  currencyCode: VPACurrencyCode;
+  approvedAt: string;
+}
