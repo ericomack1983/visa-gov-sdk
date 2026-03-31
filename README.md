@@ -86,13 +86,12 @@ VCN pipeline steps:
 
 ### Settle a payment
 
-Three settlement rails are supported:
+Settlement rails are supported:
 
 | Rail | Steps | Default timing |
 |------|-------|---------------|
-| `USD` | authorized → processing → settled | 2 s/step (~6 s total) |
 | `Card` | authorized → processing → settled | 2 s/step (~6 s total) |
-| `USDC` | submitted → confirmed → settled | 1.5 s/step (~4.5 s total) |
+
 
 **Automated (recommended):**
 
