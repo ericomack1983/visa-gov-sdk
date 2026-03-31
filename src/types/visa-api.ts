@@ -99,7 +99,7 @@ export const VISA_SMS_STATUS_CODES = {
 /**
  * Enriched result returned by VisaNetworkService — combines the raw
  * Visa API response with a derived `isRegistered` boolean and a
- * `confidenceScore` (0-100) ready for use in the SupplierMatcher VAA dimension.
+ * `confidenceScore` (0-100) derived from the Visa match confidence level.
  */
 export interface VisaNetworkCheckResult {
   /** Raw Visa API response */
@@ -108,7 +108,7 @@ export interface VisaNetworkCheckResult {
   /** Whether the supplier is registered in the Visa network */
   isRegistered: boolean;
 
-  /** Visa match confidence mapped to 0-100 for use as VAA score input */
+  /** Visa match confidence mapped to 0-100 (High=95, Medium=70, Low=45, None=0) */
   confidenceScore: number;
 
   /** MCC code returned by Visa (empty string if not found) */

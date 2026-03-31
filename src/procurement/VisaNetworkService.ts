@@ -21,7 +21,7 @@ import { Supplier } from '../types';
 
 const SMS_ENDPOINT = '/suppliermatching/v1/supplierregistry/search';
 
-/** Map Visa confidence strings to a 0-100 score usable in SupplierMatcher VAA dimension. */
+/** Map Visa confidence strings to a 0-100 score. */
 function confidenceToScore(confidence: VisaMatchConfidence, matched: boolean): number {
   if (!matched) return 0;
   switch (confidence) {
@@ -193,8 +193,7 @@ export class VisaNetworkService {
   }
 
   /**
-   * Enrich a Supplier object with Visa network data.
-   * Populates `vaaScore` from the Visa confidence score.
+   * Enrich a Supplier object with Visa network registry data.
    */
   async enrichSupplier<T extends Supplier>(
     supplier: T & { countryCode?: string },
@@ -202,7 +201,6 @@ export class VisaNetworkService {
     const result = await this.checkSupplier(supplier);
     return {
       ...supplier,
-      vaaScore:    result.confidenceScore,
       visaNetwork: result,
     };
   }

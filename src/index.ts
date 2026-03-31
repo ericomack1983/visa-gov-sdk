@@ -5,7 +5,7 @@
  *
  * Two core capabilities:
  *   1. Visa Payments  — VCN issuance + multi-rail settlement (USD / USDC / Card)
- *   2. Supplier Match — AI-powered bid evaluation using Visa VAA scores
+ *   2. Supplier Match — AI-powered bid evaluation with Visa registry verification
  *
  * @example
  * ```ts
@@ -20,7 +20,6 @@ export {
   SettlementSession,
   getStepLabel,
   USD_STEP_DELAY_MS,
-  USDC_STEP_DELAY_MS,
 }                                               from './payments/SettlementService';
 export { VPCService }                           from './payments/VPCService';
 

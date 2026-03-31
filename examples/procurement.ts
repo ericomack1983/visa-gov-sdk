@@ -11,19 +11,19 @@ const SUPPLIERS: Supplier[] = [
     id: 'sup-001', name: 'MedEquip Co.', rating: 4.8,
     complianceStatus: 'Compliant', certifications: ['ISO 9001', 'ISO 13485'],
     pastPerformance: 92, pricingHistory: [44000, 46000],
-    walletAddress: '0xABC', deliveryAvgDays: 28, riskScore: 12, vaaScore: 94,
+    walletAddress: '0xABC', deliveryAvgDays: 28, riskScore: 12,
   },
   {
     id: 'sup-002', name: 'HealthTech Supplies', rating: 4.2,
     complianceStatus: 'Compliant', certifications: ['ISO 9001'],
     pastPerformance: 78, pricingHistory: [51000],
-    walletAddress: '0xDEF', deliveryAvgDays: 35, riskScore: 28, vaaScore: 71,
+    walletAddress: '0xDEF', deliveryAvgDays: 35, riskScore: 28,
   },
   {
     id: 'sup-003', name: 'BudgetMed LLC', rating: 3.5,
     complianceStatus: 'Pending Review', certifications: ['ISO 9001'],
     pastPerformance: 61, pricingHistory: [38000],
-    walletAddress: '0xGHI', deliveryAvgDays: 55, riskScore: 44, vaaScore: 55,
+    walletAddress: '0xGHI', deliveryAvgDays: 55, riskScore: 44,
   },
 ];
 
@@ -48,7 +48,7 @@ async function main() {
   const result  = matcher.evaluate({ rfp: RFP, bids: BIDS, suppliers: SUPPLIERS });
 
   for (const sb of result.rankedBids) {
-    console.log(`  #${sb.rank}  ${sb.supplier.name.padEnd(24)}  composite=${sb.composite}  VAA=${sb.dimensions.vaa}`);
+    console.log(`  #${sb.rank}  ${sb.supplier.name.padEnd(24)}  composite=${sb.composite}`);
   }
   console.log(`\nNarrative:\n  ${result.narrative}`);
 
@@ -59,7 +59,7 @@ async function main() {
 
   // ── Custom weights ────────────────────────────────────────────────────────
   console.log('\n━━━  Custom Weights (price-heavy)  ━━━\n');
-  const priceMatcher = SupplierMatcher.withWeights({ price: 0.50, vaa: 0.05 });
+  const priceMatcher = SupplierMatcher.withWeights({ price: 0.50 });
   const priceResult  = priceMatcher.evaluate({ rfp: RFP, bids: BIDS, suppliers: SUPPLIERS });
   console.log(`  Winner: ${priceResult.winner.supplier.name} (${priceResult.winner.composite}/100)`);
 
@@ -72,7 +72,7 @@ async function main() {
 
   for (const sb of rankedBids) {
     const vc = visaChecks.get(sb.supplier.id);
-    console.log(`  #${sb.rank}  ${sb.supplier.name.padEnd(24)}  VAA=${sb.dimensions.vaa}  registered=${vc?.isRegistered ? '✓' : '✗'}  MCC=${vc?.mcc || '—'}`);
+    console.log(`  #${sb.rank}  ${sb.supplier.name.padEnd(24)}  composite=${sb.composite}  registered=${vc?.isRegistered ? '✓' : '✗'}  MCC=${vc?.mcc || '—'}`);
   }
 }
 

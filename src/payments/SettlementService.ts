@@ -5,21 +5,18 @@ import {
   PaymentMethod,
   PaymentMode,
   USDSettlementStep,
-  USDCSettlementStep,
 } from '../types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SettlementService — Visa payment settlement state machine
 //
-// Supports three rails:
+// Supports two rails:
 //   USD  — authorized → processing → settled          (~6s, 2s/step)
-//   USDC — submitted  → confirmed  → settled          (~4.5s, 1.5s/step)
 //   Card — authorized → processing → settled          (~6s, 2s/step)
 //                       (CNP mode uses Straight-Through Processing labels)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const USD_STEP_DELAY_MS  = 2000;
-export const USDC_STEP_DELAY_MS = 1500;
+export const USD_STEP_DELAY_MS = 2000;
 
 function generateTxHash(): string {
   const chars = '0123456789abcdef';
@@ -81,9 +78,8 @@ export class SettlementSession {
       method:      params.method,
       orderId:     params.orderId,
       paymentMode: params.paymentMode,
-      currentStep: isUSDLike ? 'authorized' : 'submitted',
+      currentStep: 'authorized',
       progress:    33,
-      txHash:      params.method === 'USDC' ? generateTxHash() : undefined,
       startedAt:   new Date().toISOString(),
     };
   }
@@ -102,21 +98,11 @@ export class SettlementSession {
   advance(): SettlementState {
     if (this.state.currentStep === 'settled') return this.state;
 
-    const { method, currentStep } = this.state;
-    const isUSDLike = method === 'USD' || method === 'Card';
-
-    if (isUSDLike) {
-      if (currentStep === 'authorized') {
-        this.state = { ...this.state, currentStep: 'processing', progress: 66 };
-      } else if (currentStep === 'processing') {
-        this.state = { ...this.state, currentStep: 'settled', progress: 100 };
-      }
-    } else {
-      if (currentStep === 'submitted') {
-        this.state = { ...this.state, currentStep: 'confirmed', progress: 66 };
-      } else if (currentStep === 'confirmed') {
-        this.state = { ...this.state, currentStep: 'settled', progress: 100 };
-      }
+    const { currentStep } = this.state;
+    if (currentStep === 'authorized') {
+      this.state = { ...this.state, currentStep: 'processing', progress: 66 };
+    } else if (currentStep === 'processing') {
+      this.state = { ...this.state, currentStep: 'settled', progress: 100 };
     }
     return this.state;
   }
@@ -125,7 +111,7 @@ export class SettlementSession {
   reset(): void {
     this.state = {
       method: this.state.method,
-      currentStep: 'idle' as USDSettlementStep | USDCSettlementStep,
+      currentStep: 'idle' as USDSettlementStep,
       progress: 0,
       orderId: '',
     };
@@ -144,8 +130,7 @@ export class SettlementSession {
    * Resolves with the final SettlementResult when settled.
    */
   async run(stepDelayMs?: number): Promise<SettlementResult> {
-    const delay = stepDelayMs ??
-      (this.state.method === 'USDC' ? USDC_STEP_DELAY_MS : USD_STEP_DELAY_MS);
+    const delay = stepDelayMs ?? USD_STEP_DELAY_MS;
 
     while (!this.isSettled()) {
       await new Promise((r) => setTimeout(r, delay));
@@ -174,8 +159,7 @@ export class SettlementSession {
    * ```
    */
   async *stream(stepDelayMs?: number): AsyncGenerator<SettlementState> {
-    const delay = stepDelayMs ??
-      (this.state.method === 'USDC' ? USDC_STEP_DELAY_MS : USD_STEP_DELAY_MS);
+    const delay = stepDelayMs ?? USD_STEP_DELAY_MS;
 
     yield this.state; // emit initial state (33%)
     while (!this.isSettled()) {
@@ -193,7 +177,7 @@ export class SettlementSession {
  * @example
  * ```ts
  * const service = new SettlementService();
- * const session = service.initiate({ method: 'USDC', orderId: 'ORD-002', amount: 12000 });
+ * const session = service.initiate({ method: 'USD', orderId: 'ORD-002', amount: 12000 });
  * const result  = await session.run();
  * console.log('Settled:', result);
  * ```

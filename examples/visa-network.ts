@@ -19,7 +19,6 @@ const SUPPLIERS: Supplier[] = [
     walletAddress:    '0xABC',
     deliveryAvgDays:  28,
     riskScore:        12,
-    // vaaScore intentionally omitted — will be filled from Visa registry
   },
   {
     id:               'sup-002',
@@ -87,13 +86,13 @@ async function main() {
 
   for (const [name, res] of bulkResults) {
     const status = res.isRegistered
-      ? `✓ Registered  (confidence: ${res.raw.matchConfidence}, VAA: ${res.confidenceScore}, MCC: ${res.mcc})`
-      : `✗ Not found   (confidence: ${res.raw.matchConfidence}, VAA: ${res.confidenceScore})`;
+      ? `✓ Registered  (confidence: ${res.raw.matchConfidence}, score: ${res.confidenceScore}, MCC: ${res.mcc})`
+      : `✗ Not found   (confidence: ${res.raw.matchConfidence}, score: ${res.confidenceScore})`;
     console.log(`  ${name.padEnd(24)} ${status}`);
   }
 
   // ── 3. Enrich suppliers + AI evaluation ───────────────────────────────────
-  console.log('\n━━━  Enriched AI Evaluation (VAA from Visa)  ━━━\n');
+  console.log('\n━━━  Enriched AI Evaluation (Visa registry check)  ━━━\n');
 
   const rfp = {
     id: 'rfp-001', title: 'Medical Equipment Q2-2025',
@@ -111,18 +110,17 @@ async function main() {
 
   const matcher = SupplierMatcher.withVisaNetwork(visaNetwork);
 
-  // evaluateWithVisaCheck: calls Visa SMS API first, injects VAA scores, then ranks
+  // evaluateWithVisaCheck: calls Visa SMS API first, then ranks
   const { rankedBids, winner, narrative, visaChecks } = await matcher.evaluateWithVisaCheck({
     rfp, bids, suppliers: SUPPLIERS, countryCode: 'US',
   });
 
-  console.log('Ranked results (VAA sourced from Visa registry):\n');
+  console.log('Ranked results (Visa registry verified):\n');
   for (const sb of rankedBids) {
     const vc = visaChecks.get(sb.supplier.id);
     console.log(
       `  #${sb.rank}  ${sb.supplier.name.padEnd(24)}` +
       `  composite=${sb.composite.toString().padStart(3)}  ` +
-      `VAA=${sb.dimensions.vaa.toString().padStart(3)}  ` +
       `registered=${vc?.isRegistered ? '✓' : '✗'}  ` +
       `MCC=${vc?.mcc || '—'}`,
     );

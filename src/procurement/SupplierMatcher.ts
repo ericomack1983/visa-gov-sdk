@@ -12,21 +12,16 @@ import { VisaNetworkService } from './VisaNetworkService';
 // ─────────────────────────────────────────────────────────────────────────────
 // SupplierMatcher — AI-powered supplier scoring and ranking engine
 //
-// Scores suppliers across six weighted dimensions:
-//   price (25%), delivery (20%), reliability (20%), compliance (15%),
-//   risk (10%), vaa — Visa Advanced Authorization Score (10%)
-//
-// The VAA dimension can be automatically populated from the Visa Supplier
-// Match Service (SMS) API by injecting a VisaNetworkService instance.
+// Scores suppliers across five weighted dimensions:
+//   price (28%), delivery (22%), reliability (22%), compliance (17%), risk (11%)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const DEFAULT_WEIGHTS: ScoringWeights = {
-  price:       0.25,
-  delivery:    0.20,
-  reliability: 0.20,
-  compliance:  0.15,
-  risk:        0.10,
-  vaa:         0.10,
+  price:       0.28,
+  delivery:    0.22,
+  reliability: 0.22,
+  compliance:  0.17,
+  risk:        0.11,
 };
 
 function computeDimensions(bid: Bid, supplier: Supplier, rfp: RFP): DimensionScores {
@@ -42,9 +37,8 @@ function computeDimensions(bid: Bid, supplier: Supplier, rfp: RFP): DimensionSco
      supplier.complianceStatus === 'Pending Review' ? 30 : 0) +
     Math.min(40, supplier.certifications.length * 10);
   const risk = Math.max(0, 100 - supplier.riskScore);
-  const vaa  = supplier.vaaScore ?? 50; // default neutral if VAA not available
 
-  return { price, delivery, reliability, compliance, risk, vaa };
+  return { price, delivery, reliability, compliance, risk };
 }
 
 function computeComposite(dimensions: DimensionScores, weights: ScoringWeights): number {
@@ -53,8 +47,7 @@ function computeComposite(dimensions: DimensionScores, weights: ScoringWeights):
     dimensions.delivery    * weights.delivery    +
     dimensions.reliability * weights.reliability +
     dimensions.compliance  * weights.compliance  +
-    dimensions.risk        * weights.risk        +
-    dimensions.vaa         * weights.vaa,
+    dimensions.risk        * weights.risk,
   );
 }
 
@@ -62,7 +55,6 @@ function computeComposite(dimensions: DimensionScores, weights: ScoringWeights):
  * SupplierMatcher
  *
  * Evaluates and ranks supplier bids for an RFP using a weighted multi-criteria model.
- * The Visa Advanced Authorization (VAA) score is used as a payment-risk dimension.
  *
  * @example
  * ```ts
@@ -73,12 +65,10 @@ function computeComposite(dimensions: DimensionScores, weights: ScoringWeights):
  * console.log(result.narrative);
  *
  * // With custom weights (e.g. price-heavy procurement)
- * const priceFocused = SupplierMatcher.withWeights({ price: 0.45, delivery: 0.15, vaa: 0.05 });
+ * const priceFocused = SupplierMatcher.withWeights({ price: 0.50, delivery: 0.15 });
  *
- * // With Visa network registry checks (VAA score sourced live from Visa)
- * const matcher = new SupplierMatcher({
- *   visaNetwork: VisaNetworkService.sandbox(),
- * });
+ * // With Visa network registry checks
+ * const matcher = new SupplierMatcher({ visaNetwork: VisaNetworkService.sandbox() });
  * const result = await matcher.evaluateWithVisaCheck({ rfp, bids, suppliers, countryCode: 'US' });
  * ```
  */
@@ -102,7 +92,7 @@ export class SupplierMatcher {
     return new SupplierMatcher({ weights: partial });
   }
 
-  /** Create a SupplierMatcher backed by the Visa Supplier Match Service for live VAA scores. */
+  /** Create a SupplierMatcher backed by the Visa Supplier Match Service for registry verification. */
   static withVisaNetwork(
     visaNetwork: VisaNetworkService,
     weights?: Partial<ScoringWeights>,
@@ -173,11 +163,11 @@ export class SupplierMatcher {
     if (ranked.length === 0) return 'No bids to evaluate.';
     if (ranked.length === 1) {
       const w = ranked[0];
-      return `${w.supplier.name} is the sole bidder with a composite score of ${w.composite}/100 and a VAA Score of ${w.dimensions.vaa}.`;
+      return `${w.supplier.name} is the sole bidder with a composite score of ${w.composite}/100.`;
     }
     const winner   = ranked[0];
     const runnerUp = ranked[1];
-    const dims     = ['price', 'delivery', 'reliability', 'compliance', 'risk', 'vaa'] as (keyof DimensionScores)[];
+    const dims     = ['price', 'delivery', 'reliability', 'compliance', 'risk'] as (keyof DimensionScores)[];
 
     let topDim = dims[0];
     let topVal = winner.dimensions[dims[0]];
@@ -188,7 +178,7 @@ export class SupplierMatcher {
     for (const d of dims) if (runnerUp.dimensions[d] < weakVal) { weakDim = d; weakVal = runnerUp.dimensions[d]; }
 
     const gap = winner.composite - runnerUp.composite;
-    return `${winner.supplier.name} leads with a composite score of ${winner.composite}/100 and a Visa Advanced Authorization (VAA) Score of ${winner.dimensions.vaa}, reflecting high payment reliability. Their strongest dimension is ${topDim} (${topVal.toFixed(0)}/100). ${runnerUp.supplier.name} scored ${gap} points lower, primarily due to weak ${weakDim} (${weakVal.toFixed(0)}/100).`;
+    return `${winner.supplier.name} leads with a composite score of ${winner.composite}/100, reflecting strong overall performance. Their strongest dimension is ${topDim} (${topVal.toFixed(0)}/100). ${runnerUp.supplier.name} scored ${gap} points lower, primarily due to weak ${weakDim} (${weakVal.toFixed(0)}/100).`;
   }
 
   /**
@@ -197,7 +187,7 @@ export class SupplierMatcher {
    * The override is flagged for audit and compliance review.
    */
   generateOverrideNarrative(selected: ScoredBid, best: ScoredBid): string {
-    const dims = ['price', 'delivery', 'reliability', 'compliance', 'risk', 'vaa'] as (keyof DimensionScores)[];
+    const dims = ['price', 'delivery', 'reliability', 'compliance', 'risk'] as (keyof DimensionScores)[];
     const gap  = best.composite - selected.composite;
 
     let weakDim  = dims[0];
@@ -214,24 +204,19 @@ export class SupplierMatcher {
       if (diff > edgeGap) { edgeGap = diff; edgeDim = d; }
     }
 
-    const vaaLine = best.dimensions.vaa > selected.dimensions.vaa
-      ? ` Visa VAA score confirms ${best.supplier.name} carries lower payment risk (${best.dimensions.vaa} vs ${selected.dimensions.vaa.toFixed(0)}).`
-      : '';
-
     const edgeLine = edgeDim && edgeGap > 2
       ? ` Note: ${selected.supplier.name} does edge ahead on ${edgeDim} (+${edgeGap.toFixed(0)} pts), but this dimension carries less weight in the composite model.`
       : '';
 
-    return `⚠ Manual override detected. You selected ${selected.supplier.name} (rank #${selected.rank}, ${selected.composite}/100), bypassing the AI recommendation.\n\n${best.supplier.name} scores ${gap} points higher at ${best.composite}/100. The largest gap is in ${weakDim}: ${best.supplier.name} scores ${best.dimensions[weakDim].toFixed(0)} vs ${selected.dimensions[weakDim].toFixed(0)} for ${selected.supplier.name}.${vaaLine}${edgeLine}\n\nThis override will be logged for audit and compliance review.`;
+    return `⚠ Manual override detected. You selected ${selected.supplier.name} (rank #${selected.rank}, ${selected.composite}/100), bypassing the AI recommendation.\n\n${best.supplier.name} scores ${gap} points higher at ${best.composite}/100. The largest gap is in ${weakDim}: ${best.supplier.name} scores ${best.dimensions[weakDim].toFixed(0)} vs ${selected.dimensions[weakDim].toFixed(0)} for ${selected.supplier.name}.${edgeLine}\n\nThis override will be logged for audit and compliance review.`;
   }
 
   /**
    * Evaluate bids after automatically checking each supplier against the
    * Visa Supplier Match Service registry.
    *
-   * Suppliers confirmed in the Visa network get their `vaaScore` set from
-   * the match confidence (High=95, Medium=70, Low=45, None=0).
-   * Suppliers not found in Visa are scored 0 on the VAA dimension.
+   * Suppliers confirmed in the Visa network have their registry status
+   * available in the returned `visaChecks` map.
    *
    * Requires a `visaNetwork` service injected at construction time,
    * or passed directly as `options.visaNetwork`.
@@ -252,7 +237,6 @@ export class SupplierMatcher {
    *   console.log(
    *     sb.supplier.name,
    *     '| registered:', reg?.isRegistered,
-   *     '| VAA:', sb.dimensions.vaa,
    *     '| MCC:', reg?.mcc,
    *   );
    * }
@@ -284,17 +268,11 @@ export class SupplierMatcher {
     // Build a lookup map: supplierId → enriched supplier
     const enrichedMap = new Map(enriched.map((s) => [s.id, s]));
 
-    // Merge enriched vaaScore back into the suppliers list
-    const enrichedSuppliers = params.suppliers.map((s) => {
-      const e = enrichedMap.get(s.id);
-      return e ? { ...s, vaaScore: e.vaaScore } : s;
-    });
-
-    // Run standard evaluation with enriched VAA scores
+    // Run standard evaluation with Visa-verified supplier data
     const result = this.evaluate({
       rfp:       params.rfp,
       bids:      params.bids,
-      suppliers: enrichedSuppliers,
+      suppliers: params.suppliers,
     });
 
     // Build visaChecks map: supplierId → VisaNetworkCheckResult

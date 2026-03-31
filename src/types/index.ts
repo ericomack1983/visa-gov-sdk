@@ -17,7 +17,6 @@ export interface Supplier {
   walletAddress: string;
   deliveryAvgDays: number;
   riskScore: number;                                       // 0-100 (lower = less risk)
-  vaaScore?: number;                                       // Visa Advanced Authorization Score 0-100
   cards?: PaymentCard[];
 }
 
@@ -54,7 +53,6 @@ export interface DimensionScores {
   reliability: number;  // 0-100
   compliance: number;   // 0-100
   risk: number;         // 0-100
-  vaa: number;          // 0-100 — Visa Advanced Authorization Score
 }
 
 export interface ScoredBid {
@@ -72,7 +70,6 @@ export interface ScoringWeights {
   reliability: number;
   compliance: number;
   risk: number;
-  vaa: number;
 }
 
 export interface EvaluationResult {
@@ -85,7 +82,7 @@ export interface EvaluationResult {
 
 // ── Payments ──────────────────────────────────────────────────────────────────
 
-export type PaymentMethod = 'USD' | 'USDC' | 'Card';
+export type PaymentMethod = 'USD' | 'Card';
 export type TransactionStatus = 'Pending' | 'Authorized' | 'Processing' | 'Settled';
 export type PaymentMode = 'cnp' | 'card-present';
 
@@ -147,11 +144,10 @@ export interface VCNIssueResult {
 }
 
 export type USDSettlementStep = 'idle' | 'authorized' | 'processing' | 'settled';
-export type USDCSettlementStep = 'idle' | 'submitted' | 'confirmed' | 'settled';
 
 export interface SettlementState {
   method: PaymentMethod;
-  currentStep: USDSettlementStep | USDCSettlementStep;
+  currentStep: USDSettlementStep;
   progress: number;     // 0, 33, 66, 100
   txHash?: string;
   orderId: string;
