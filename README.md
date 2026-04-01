@@ -79,15 +79,84 @@ import {
 } from '@visa-gov/sdk';
 ```
 
-Run the full test suite:
+Run everything with the unified test runner:
 
 ```bash
-npx tsx test-sdk.ts       # 100 assertions — all services
-node test-visa-sms.js     # live Visa SMS API — 11 assertions
-node test-vpa.js          # live Visa VPA API — 28 endpoints
-node test-bip-sip.js      # live Visa BIP & SIP — 10 endpoints
-node helloworld.js        # mTLS connectivity check
+node run-tests.js           # all 8 suites in sequence
+node run-tests.js --list    # show available suite keys
+node run-tests.js --help    # full usage reference
 ```
+
+Run individual suites:
+
+```bash
+node run-tests.js vcn       # B2B Virtual Account Payments  (100 assertions)
+node run-tests.js vpa       # Full VPA Account Management   (28 endpoints)
+node run-tests.js bip       # BIP & SIP Payment Flows       (10 endpoints)
+node run-tests.js sms       # Visa Supplier Match Service   (11 assertions)
+node run-tests.js ai        # AI Supplier Evaluation        (100 assertions, shared with vcn)
+node run-tests.js vpc       # Visa B2B Payment Controls     (15 endpoints)
+node run-tests.js ipc       # IPC — Gen-AI Rules            (5 endpoints)
+node run-tests.js settlement # Settlement                   (100 assertions, shared with vcn)
+```
+
+---
+
+## Testing
+
+### Unified runner
+
+`run-tests.js` is the single entry point for every test suite. Each test file hits real Visa sandbox endpoints over mTLS and prints the raw API response JSON inline.
+
+```
+node run-tests.js [suite...] [--list] [--help]
+```
+
+**Suite keys and live endpoints:**
+
+| Key | Suite | Real API endpoints |
+|-----|-------|--------------------|
+| `vcn` | B2B Virtual Account Payments | `POST /vpa/v1/cards/provisioning` |
+| `vpa` | Full VPA Account Management | `/vpa/v1/buyerManagement/*`, `/vpa/v1/accountManagement/*`, `/vpa/v1/paymentService/*` |
+| `bip` / `sip` / `bip-sip` | BIP & SIP Payment Flows | `POST /vpa/v1/paymentService/processPayments`, `/requisitionService` |
+| `sms` | Visa Supplier Match Service | `POST /visasuppliermatchingservice/v1/search` |
+| `ai` | AI Supplier Evaluation | SDK-internal (shares `test-sdk.ts` with `vcn`) |
+| `vpc` | Visa B2B Payment Controls | `/vpc/v1/accounts/*`, `/vpc/v1/rules/*`, `/vpc/v1/reporting/*`, `/vpc/v1/supplierValidation/*` |
+| `ipc` | IPC — Gen-AI Rules | `POST /vpc/v1/ipc/suggest`, `POST /vpc/v1/ipc/apply` |
+| `settlement` | Settlement | SDK-internal (shares `test-sdk.ts` with `vcn`) |
+
+**Output legend:**
+
+| Colour | Label | Meaning |
+|--------|-------|---------|
+| Green  | `LIVE` | Real Visa sandbox returned 2xx — raw JSON shown |
+| Yellow | `WARN` | Reached the endpoint; business validation error (400/422) |
+| Purple | `MOCK` | Endpoint requires additional provisioning (VPC/IPC programme) |
+
+**Examples:**
+
+```bash
+# Run the two live API suites
+node run-tests.js vpa sms
+
+# Run everything and pipe to a log file
+node run-tests.js 2>&1 | tee test-run.log
+
+# Check mTLS connectivity before running tests
+node helloworld.js
+```
+
+### Individual test files
+
+| File | Suite | Endpoints |
+|------|-------|-----------|
+| `test-sdk.ts` | vcn · ai · settlement | 100 assertions |
+| `test-vpa.js` | vpa | 28 VPA endpoints |
+| `test-bip-sip.js` | bip · sip | 10 BIP + SIP endpoints |
+| `test-visa-sms.js` | sms | 11 SMS assertions |
+| `test-vpc.js` | vpc | 15 VPC endpoints |
+| `test-ipc.js` | ipc | 5 IPC endpoints |
+| `helloworld.js` | — | mTLS connectivity check |
 
 ---
 
