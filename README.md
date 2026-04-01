@@ -168,10 +168,12 @@ node helloworld.js
 | [2](#2--full-vpa-account-management) | **Full VPA Account Management** | Buyers, funding accounts, proxy pools, suppliers, payments | `/vpa/v1/*` |
 | [3](#3--bip--sip-payment-flows) | **BIP & SIP Payment Flows** | Buyer-initiated and Supplier-initiated B2B payment flows | `POST /vpa/v1/paymentService/*` |
 | [4](#4--visa-supplier-match-service-sms) | **Visa Supplier Match Service** | Verify suppliers in the Visa network, get match score | `POST /visasuppliermatchingservice/v1/search` |
-| [5](#5--ai-supplier-evaluation) | **AI Supplier Evaluation** <img width="512" height="512" alt="image" src="https://github.com/user-attachments/assets/999958a7-cd60-469e-adc9-36f851751a3f" />
+| [5](#5--ai-supplier-evaluation) | **AI Supplier Evaluation** <img width="100" height="100" alt="image" src="https://github.com/user-attachments/assets/726ad6f5-8e35-4992-a85c-d96717c1793c" />
+
 | Score & rank bids across 6 weighted dimensions | SDK-internal |
 | [6](#6--visa-b2b-payment-controls-vpc) | **Visa B2B Payment Controls** | Real-time spending rules on every virtual card | `/vpc/v1/*` |
-| [7](#7--ipc--intelligent-payment-controls-gen-ai) | **IPC — Gen-AI Rules** <img width="512" height="512" alt="image" src="https://github.com/user-attachments/assets/1bbdebcc-4faa-4b4f-8836-9571d79e3bc3" />
+| [7](#7--ipc--intelligent-payment-controls-gen-ai) | **IPC — Gen-AI Rules** <img width="100" height="100" alt="image" src="https://github.com/user-attachments/assets/4e88106e-505a-4742-ab9d-7e4cf1335db9" />
+
  | Natural language → payment control rules | `POST /vpc/v1/ipc/suggest` |
 | [8](#8--settlement) | **Settlement** | Multi-rail payment settlement with streaming | SDK-internal |
 
