@@ -116,6 +116,52 @@ function banner(text) {
   console.log(`${BOLD}${line}${RESET}`);
 }
 
+function printHelp() {
+  console.log(`
+${BOLD}@visa-gov/sdk — Unified Test Runner${RESET}
+
+${BOLD}USAGE${RESET}
+  node run-tests.js [suite ...]     Run one or more suites (space-separated)
+  node run-tests.js                 Run every suite (same as: all)
+  node run-tests.js all             Run every suite explicitly
+  node run-tests.js --list          List all suite keys and aliases
+  node run-tests.js --help          Show this help message
+
+${BOLD}SUITE KEYS${RESET}
+  ${CYAN}vcn${RESET}          B2B Virtual Account Payments   ${DIM}POST /vpa/v1/cards/provisioning${RESET}
+  ${CYAN}vpa${RESET}          Full VPA Account Management    ${DIM}/vpa/v1/* (28 endpoints)${RESET}
+  ${CYAN}bip${RESET}          BIP & SIP Payment Flows        ${DIM}/vpa/v1/paymentService/* (10 endpoints)${RESET}
+  ${CYAN}sms${RESET}          Visa Supplier Match Service    ${DIM}POST /visasuppliermatchingservice/v1/search${RESET}
+  ${CYAN}ai${RESET}           AI Supplier Evaluation         ${DIM}SDK-internal (SupplierMatcher)${RESET}
+  ${CYAN}vpc${RESET}          Visa B2B Payment Controls      ${DIM}/vpc/v1/* (15 endpoints)${RESET}
+  ${CYAN}ipc${RESET}          IPC — Gen-AI Rules             ${DIM}POST /vpc/v1/ipc/suggest + /apply${RESET}
+  ${CYAN}settlement${RESET}   Settlement                     ${DIM}SDK-internal (SettlementService)${RESET}
+
+${BOLD}ALIASES${RESET}
+  bip-sip, sip   → bip
+  scorer, matcher → ai
+  settle          → settlement
+
+${BOLD}EXAMPLES${RESET}
+  node run-tests.js                    # run all 8 suites
+  node run-tests.js sms                # Visa Supplier Match only
+  node run-tests.js vpa bip sms        # VPA + BIP/SIP + SMS
+  node run-tests.js vcn ai settlement  # runs test-sdk.ts once (shared)
+  node run-tests.js vpc ipc            # Payment Controls + Gen-AI
+
+${BOLD}OUTPUT LEGEND${RESET}
+  ${GREEN}LIVE nnn${RESET}   Real Visa sandbox accepted the call (2xx)
+  \x1b[33mWARN nnn\x1b[0m   Endpoint reached; business/payload validation error (400)
+  \x1b[35mMOCK\x1b[0m       Blocked (401/404) — module needs Visa provisioning; mock shown
+
+${BOLD}NOTES${RESET}
+  • vcn, ai and settlement all run test-sdk.ts internally.
+    Requesting any combination runs it only once.
+  • Live sandbox calls require mTLS certs in ./certs/
+  • Exit code 0 = all selected suites passed; 1 = at least one failed.
+`);
+}
+
 function printList() {
   console.log('\nAvailable test suites:\n');
   console.log(`  ${'Key(s)'.padEnd(28)} Label`);
@@ -132,6 +178,11 @@ function printList() {
 
 function resolve(args) {
   const lower = args.map((a) => a.toLowerCase());
+
+  if (lower.includes('--help') || lower.includes('-h') || lower.includes('help')) {
+    printHelp();
+    process.exit(0);
+  }
 
   if (lower.includes('--list') || lower.includes('-l') || lower.includes('list')) {
     printList();
