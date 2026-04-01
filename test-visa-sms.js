@@ -109,6 +109,20 @@ function section(title) {
   console.log('━'.repeat(60));
 }
 
+function printResponse(data) {
+  if (data === null || data === undefined) return;
+  const json  = JSON.stringify(data, null, 2);
+  const lines = json.split('\n');
+  const MAX   = 20;
+  for (const line of lines.slice(0, MAX)) {
+    console.log(`     \x1b[2m${line}\x1b[0m`);
+  }
+  if (lines.length > MAX) {
+    console.log(`     \x1b[2m... (+${lines.length - MAX} lines)\x1b[0m`);
+  }
+  console.log('');
+}
+
 // ── Suppliers to test ─────────────────────────────────────────────────────────
 
 const SUPPLIERS = [
@@ -140,6 +154,9 @@ async function main() {
   ok('matchStatus present',                       body.matchStatus === 'Yes' || body.matchStatus === 'No');
   ok('matchConfidence present',                   ['High','Medium','Low','None'].includes(body.matchConfidence));
 
+  console.log('\n  API Response:');
+  printResponse(body);
+
   const visaMatchScore = body.matchStatus === 'Yes'
     ? (CONFIDENCE_SCORE[body.matchConfidence] ?? 0)
     : 0;
@@ -164,6 +181,7 @@ async function main() {
       : 0;
     results.push({ name: s.name, status: st, matchStatus: b.matchStatus, confidence: b.matchConfidence, score, mcc: b.matchDetails?.mcc || '—' });
     ok(`${s.name} — HTTP ${st}`, st === 200);
+    printResponse(b);
   }
 
   console.log('');
@@ -182,10 +200,12 @@ async function main() {
   // Missing required field — sandbox accepts empty name (returns a match), production would reject
   const missing = await smsSearch('', 'US');
   ok(`empty supplierName call completes`,  missing.status >= 200);
+  printResponse(missing.body);
 
   // Invalid country code
   const badCountry = await smsSearch('Test Supplier', 'XX');
   ok(`invalid countryCode returns 4xx or matched None`, badCountry.status >= 200);
+  printResponse(badCountry.body);
 
   // ── Summary ───────────────────────────────────────────────────────────────
 

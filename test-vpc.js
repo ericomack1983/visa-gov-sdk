@@ -93,6 +93,20 @@ function mtlsFetch(urlPath, method, bodyObj) {
 
 let live = 0, warned = 0, mocked = 0;
 
+function printResponse(data) {
+  if (data === null || data === undefined) return;
+  const json  = JSON.stringify(data, null, 2);
+  const lines = json.split('\n');
+  const MAX   = 20;
+  for (const line of lines.slice(0, MAX)) {
+    console.log(`         \x1b[2m${line}\x1b[0m`);
+  }
+  if (lines.length > MAX) {
+    console.log(`         \x1b[2m... (+${lines.length - MAX} lines)\x1b[0m`);
+  }
+  console.log('');
+}
+
 async function test(label, method, urlPath, body, mockData) {
   const padded = `[${method.padEnd(6)}] ${urlPath}`;
   process.stdout.write(`  ${padded.padEnd(68)} `);
@@ -103,6 +117,7 @@ async function test(label, method, urlPath, body, mockData) {
   } catch (err) {
     console.log(`\x1b[31mERROR\x1b[0m  ${err.message}`);
     mocked++;
+    printResponse(mockData);
     return { status: 0, data: mockData };
   }
 
@@ -112,6 +127,7 @@ async function test(label, method, urlPath, body, mockData) {
   if (ok) {
     console.log(`\x1b[32mLIVE ${status}\x1b[0m`);
     live++;
+    printResponse(data);
     return { status, data };
   }
 
@@ -120,7 +136,7 @@ async function test(label, method, urlPath, body, mockData) {
     const msg  = data?.responseStatus?.message || data?.message || '';
     console.log(`\x1b[33mWARN ${status}\x1b[0m  ${code} ${msg}`.trimEnd());
     warned++;
-    if (mockData) console.log(`         \x1b[2m↳ mock: ${JSON.stringify(mockData).slice(0, 100)}\x1b[0m`);
+    printResponse(mockData ?? data);
     return { status, data: mockData ?? data };
   }
 
@@ -128,8 +144,8 @@ async function test(label, method, urlPath, body, mockData) {
     : status === 404 ? 'VPC module not enabled on project'
     : `HTTP ${status}`;
   console.log(`\x1b[35mMOCK\x1b[0m   (${reason})`);
-  console.log(`         \x1b[2m↳ ${JSON.stringify(mockData).slice(0, 110)}\x1b[0m`);
   mocked++;
+  printResponse(mockData);
   return { status, data: mockData };
 }
 
