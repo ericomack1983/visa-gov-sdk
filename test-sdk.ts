@@ -26,7 +26,8 @@ import {
   buildCAIDRule,
   buildBlockRule,
 } from './src';
-import type { Supplier, Bid, RFP } from './src/types';
+import type { Supplier, Bid } from './src/types';
+import type { EvalContext } from './src/procurement/SupplierMatcher';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -72,12 +73,9 @@ const SUPPLIERS: Supplier[] = [
   },
 ];
 
-const RFP_FIXTURE: RFP = {
-  id: 'rfp-001', title: 'Medical Equipment Q2-2025',
-  description: 'Surgical instruments for 3 hospitals',
-  budgetCeiling: 50_000, deadline: '2025-04-30',
-  category: 'Medical Equipment', status: 'Open',
-  createdAt: new Date().toISOString(), bids: [],
+const RFP_FIXTURE: EvalContext = {
+  id: 'rfp-001',
+  budgetCeiling: 50_000,
 };
 
 const BIDS: Bid[] = [

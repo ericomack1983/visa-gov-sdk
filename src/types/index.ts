@@ -4,8 +4,6 @@
 
 // ── Procurement ───────────────────────────────────────────────────────────────
 
-export type RFPStatus = 'Draft' | 'Open' | 'Evaluating' | 'Awarded' | 'Paid';
-
 export interface Supplier {
   id: string;
   name: string;
@@ -29,22 +27,6 @@ export interface Bid {
   deliveryDays: number;
   notes: string;
   submittedAt: string;                                     // ISO 8601
-}
-
-export interface RFP {
-  id: string;
-  title: string;
-  description: string;
-  budgetCeiling: number;
-  deadline: string;                                        // ISO 8601
-  category: string;
-  status: RFPStatus;
-  createdAt: string;                                       // ISO 8601
-  bids: Bid[];
-  selectedWinnerId?: string;
-  evaluationResults?: ScoredBid[];
-  overrideWinnerId?: string;
-  overrideJustification?: string;
 }
 
 export interface DimensionScores {
@@ -159,25 +141,4 @@ export interface Transaction {
   settledAt?: string;
 }
 
-// ── Audit ─────────────────────────────────────────────────────────────────────
 
-export type AuditEventType =
-  | 'rfp_created'
-  | 'rfp_published'
-  | 'bid_submitted'
-  | 'evaluation_run'
-  | 'supplier_awarded'
-  | 'override_applied'
-  | 'payment_initiated'
-  | 'payment_settled';
-
-export interface AuditEvent {
-  id: string;
-  timestamp: string;
-  type: AuditEventType;
-  description: string;
-  rfpId: string;
-  rfpTitle: string;
-  actor: string;
-  metadata?: Record<string, string>;
-}

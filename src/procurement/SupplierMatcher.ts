@@ -1,12 +1,17 @@
 import {
   Bid,
   Supplier,
-  RFP,
   DimensionScores,
   ScoredBid,
   ScoringWeights,
   EvaluationResult,
 } from '../types';
+
+/** Minimal context needed to evaluate bids — budget ceiling and an identifier. */
+export interface EvalContext {
+  id: string;
+  budgetCeiling: number;
+}
 import { VisaNetworkService } from './VisaNetworkService';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -32,7 +37,7 @@ export const DEFAULT_WEIGHTS: ScoringWeights = {
 function computeDimensions(
   bid: Bid,
   supplier: Supplier,
-  rfp: RFP,
+  rfp: EvalContext,
   visaMatchScore = 0,
 ): DimensionScores {
   const price = Math.max(0, Math.min(100,
@@ -122,7 +127,7 @@ export class SupplierMatcher {
    * Returns a full EvaluationResult with ranked bids and an AI narrative.
    * `visaMatchScore` dimension will be 0 — use evaluateWithVisaCheck() to populate it.
    */
-  evaluate(params: { rfp: RFP; bids: Bid[]; suppliers: Supplier[] }): EvaluationResult {
+  evaluate(params: { rfp: EvalContext; bids: Bid[]; suppliers: Supplier[] }): EvaluationResult {
     const { rfp, bids, suppliers } = params;
     const ranked = this.scoreBids(bids, suppliers, rfp);
 
@@ -146,7 +151,7 @@ export class SupplierMatcher {
   scoreBids(
     bids: Bid[],
     suppliers: Supplier[],
-    rfp: RFP,
+    rfp: EvalContext,
     visaScores?: Map<string, number>,
   ): ScoredBid[] {
     const supplierMap = new Map(suppliers.map((s) => [s.id, s]));
@@ -173,7 +178,7 @@ export class SupplierMatcher {
   scoreBid(
     bid: Bid,
     supplier: Supplier,
-    rfp: RFP,
+    rfp: EvalContext,
     visaMatchScore = 0,
   ): Omit<ScoredBid, 'rank' | 'isWinner'> {
     const dimensions = computeDimensions(bid, supplier, rfp, visaMatchScore);
@@ -273,7 +278,7 @@ export class SupplierMatcher {
    * ```
    */
   async evaluateWithVisaCheck(params: {
-    rfp: RFP;
+    rfp: EvalContext;
     bids: Bid[];
     suppliers: Supplier[];
     countryCode?: string;
