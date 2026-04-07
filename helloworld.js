@@ -9,9 +9,12 @@
 
 'use strict';
 
-const https = require('https');
-const fs    = require('fs');
-const path  = require('path');
+const https           = require('https');
+const fs              = require('fs');
+const path            = require('path');
+const { printBanner } = require('./banner');
+
+printBanner('Visa GovPay SDK');
 
 // ── 1. Load TLS materials ─────────────────────────────────────────────────────
 
@@ -81,8 +84,6 @@ const options = {
   ...(clientCert ? { cert: clientCert, key: privateKey } : {}),
 };
 
-console.log('Visa Developer Platform — Hello World');
-console.log('======================================');
 console.log(`Endpoint : https://${options.hostname}${options.path}`);
 console.log(`User ID  : ${USER}`);
 console.log(`mTLS     : ${clientCert ? 'enabled (client cert + private key)' : 'Basic Auth only — client cert not configured'}`);

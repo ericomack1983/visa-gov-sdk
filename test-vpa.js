@@ -21,6 +21,9 @@
 
 'use strict';
 
+const { printBanner } = require('./banner');
+printBanner('Full VPA Account Management');
+
 const https = require('https');
 const fs    = require('fs');
 const path  = require('path');

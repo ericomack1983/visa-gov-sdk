@@ -29,6 +29,9 @@
 
 'use strict';
 
+const { printBanner } = require('./banner');
+printBanner('BIP & SIP Payment Flows');
+
 const https = require('https');
 const fs    = require('fs');
 const path  = require('path');

@@ -15,6 +15,9 @@
 
 'use strict';
 
+const { printBanner } = require('./banner');
+printBanner('Visa Supplier Match Service');
+
 const https = require('https');
 const fs    = require('fs');
 const path  = require('path');

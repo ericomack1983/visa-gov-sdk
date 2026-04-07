@@ -16,6 +16,9 @@
 
 'use strict';
 
+const { printBanner } = require('./banner');
+printBanner('IPC — Intelligent Payment Controls');
+
 const https = require('https');
 const fs    = require('fs');
 const path  = require('path');

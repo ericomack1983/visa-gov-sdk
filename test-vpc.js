@@ -17,6 +17,9 @@
 
 'use strict';
 
+const { printBanner } = require('./banner');
+printBanner('Visa B2B Payment Controls');
+
 const https = require('https');
 const fs    = require('fs');
 const path  = require('path');
