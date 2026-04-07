@@ -138,7 +138,7 @@ node run-tests.js --help    # full usage reference
 ## Testing
 
 <div align="center">
-  <video src="https://github.com/ericomack1983/visa-gov-sdk/releases/download/assets-v1/demo.mp4" controls loop muted playsinline width="820"></video>
+  <img src="./demo.gif" alt="SDK test suite demo" width="820" style="border-radius:12px;border:2px solid #1A1F71;box-shadow:0 8px 32px rgba(26,31,113,0.25);" />
 </div>
 
 ### Unified runner
