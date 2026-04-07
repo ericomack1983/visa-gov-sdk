@@ -2,13 +2,14 @@
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=1A1F71&height=140&section=header&text=%40visa-gov%2Fsdk&fontSize=48&fontColor=FFFFFF&animation=fadeIn&fontAlignY=42&desc=AI-Powered%20Government%20Procurement%20on%20Visa%20Rails&descAlignY=66&descSize=17&descColor=C8D4FF" width="100%"/>
 
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&pause=1200&color=1A1F71&center=true&vCenter=true&width=620&lines=Issue+virtual+cards+with+embedded+rules;Score+suppliers+with+6-dimension+AI;Real-time+payment+controls+on+every+card;Natural+language+%E2%86%92+payment+rules+(IPC+Gen-AI);From+discovery+to+settlement+in+one+SDK" alt="Typing animation" />
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&pause=1200&color=1A1F71&center=true&vCenter=true&width=620&lines=Issue+virtual+cards+with+embedded+rules;Score+suppliers+with+6-dimension+AI;Real-time+payment+controls+on+every+card;Natural+language+%E2%86%92+payment+rules+(IPC+Gen-AI);From+discovery+to+settlement+in+one+SDK;Now+accessible+to+AI+agents+via+MCP" alt="Typing animation" />
 
 <br/>
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.4-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Visa API](https://img.shields.io/badge/Visa%20API-Sandbox%20%2B%20Live-1A1F71?logo=visa&logoColor=white)](https://developer.visa.com)
 [![Tests](https://img.shields.io/badge/Tests-100%20passing-22c55e?logo=checkmarx&logoColor=white)](./test-sdk.ts)
+[![MCP](https://img.shields.io/badge/MCP-20%20tools-7C3AED?logo=anthropic&logoColor=white)](./mcp/server.ts)
 [![License](https://img.shields.io/badge/License-MIT-f59e0b)](./LICENSE)
 [![mTLS](https://img.shields.io/badge/Auth-mTLS%20Two--Way%20SSL-6366f1)](./src/client.ts)
 
@@ -19,6 +20,8 @@
 ## What is this?
 
 Government procurement is slow, opaque, and expensive. This SDK wires the full Visa B2B payment infrastructure into a single TypeScript package — letting agencies go from **discovering a supplier** to **settling a payment** in one coherent flow, with AI-powered scoring and real-time payment controls at every step.
+
+The SDK ships with a built-in **MCP server** that exposes all 20 capabilities to AI agents (Claude Code, Claude Desktop, Cursor, and any other MCP-compatible client) over natural language, with built-in guardrails on every money-moving operation.
 
 <div align="center">
 
@@ -38,6 +41,9 @@ Government procurement is slow, opaque, and expensive. This SDK wires the full V
          │
          ▼
   Settle on Visa rails ──▶ USD · Card  |  streaming state for UI
+         │
+         ▼
+  🤖 MCP Server ──▶ All of the above via natural language + guardrails
 ```
 
 </div>
@@ -53,11 +59,15 @@ graph TB
     classDef ai      fill:#7C3AED,color:#fff,stroke:#7C3AED
     classDef controls fill:#059669,color:#fff,stroke:#059669
     classDef settle  fill:#D97706,color:#fff,stroke:#D97706
+    classDef mcp     fill:#0F172A,color:#fff,stroke:#0F172A
 
     GOV["🏛️ Government Agency"]
+    AGENT["🤖 AI Agent\nClaude · Cursor · etc."]:::mcp
 
     subgraph SDK["  @visa-gov/sdk  "]
         direction TB
+
+        MCP["MCP Server\n20 tools · guardrails"]:::mcp
 
         subgraph Payments["💳 Payments Layer"]
             VCN["VCNService\nVirtual Card Issuance"]:::payment
@@ -82,6 +92,12 @@ graph TB
     GOV --> AI
     GOV --> VCN
     GOV --> B2B
+    AGENT --> MCP
+    MCP --> AI
+    MCP --> VCN
+    MCP --> B2B
+    MCP --> VPC
+    MCP --> SET
     AI  --> SMS
     SMS --> VISA
     VCN --> VISA
@@ -132,6 +148,7 @@ node run-tests.js --help    # full usage reference
 | [6](#6--visa-b2b-payment-controls-vpc) | **Visa B2B Payment Controls** | Real-time spending rules on every virtual card | `/vpc/v1/*` |
 | [7](#7--ipc--intelligent-payment-controls-gen-ai) | **IPC — Gen-AI Rules** | Natural language → payment control rules | `POST /vpc/v1/ipc/suggest` |
 | [8](#8--settlement) | **Settlement** | Multi-rail payment settlement with streaming | SDK-internal |
+| [9](#9--mcp-server--ai-agent-interface) | **MCP Server** | All 20 capabilities exposed to AI agents via natural language + guardrails | stdio transport |
 
 ---
 
@@ -830,6 +847,176 @@ for await (const state of session.stream(1_500)) {  // 1.5s per step
 
 ---
 
+## 9 · MCP Server — AI Agent Interface
+
+> Every SDK capability is available to AI agents as a natural-language tool, with built-in two-phase guardrails on every operation that issues real cards or moves money.
+
+The MCP server is part of the SDK — no separate package. Build it once and wire it into any MCP-compatible client in seconds.
+
+### Quick install
+
+```bash
+# Build the MCP server
+npm run build:mcp
+
+# Sandbox mode — no credentials needed, uses realistic mock responses
+claude mcp add --transport stdio visa-gov \
+  -- node /path/to/visa-gov-sdk/mcp/dist/index.js
+
+# Live mode — Visa Sandbox API with mTLS
+claude mcp add --transport stdio visa-gov \
+  -e VISA_USER_ID=your-user-id \
+  -e VISA_PASSWORD=your-password \
+  -e VISA_BASE_URL=https://sandbox.api.visa.com \
+  -e VISA_CERT_PATH=/path/to/cert.pem \
+  -e VISA_KEY_PATH=/path/to/privateKey.pem \
+  -e VISA_CA_PATH=/path/to/ca-bundle.pem \
+  -e SANDBOX_MODE=false \
+  -- node /path/to/visa-gov-sdk/mcp/dist/index.js
+```
+
+Use `--scope user` to keep credentials out of the shared `.mcp.json`:
+
+```bash
+claude mcp add --transport stdio visa-gov \
+  --scope user \
+  -e VISA_USER_ID=xxx -e VISA_PASSWORD=yyy \
+  -- node /path/to/visa-gov-sdk/mcp/dist/index.js
+```
+
+### Available tools
+
+| Tool | Group | Confirmation | Description |
+|------|-------|:------------:|-------------|
+| `sms_check_supplier` | Supplier Intelligence | — | Check Visa network registration, confidence score, MCC |
+| `sms_bulk_check_suppliers` | Supplier Intelligence | — | Batch check up to 10 suppliers in parallel |
+| `ai_evaluate_bids` | Supplier Intelligence | — | Score and rank RFP bids with live Visa SMS verification |
+| `vpc_suggest_rules` | Payment Controls | — | Gen-AI: translate a description into a VPC rule set |
+| `vpc_apply_rules` | Payment Controls | — | Apply a suggested rule set to an account |
+| `vpc_set_rules_manual` | Payment Controls | — | Manually set payment control rules |
+| `vpc_get_rules` | Payment Controls | — | Get current rules for a VPC account |
+| `vpc_block_account` | Payment Controls | — | Emergency HOT block — all transactions suspended instantly |
+| `vpc_create_account` | Payment Controls | — | Register a virtual card account with VPC |
+| `vpc_get_transaction_history` | Payment Controls | — | Transaction history, optionally filtered by outcome |
+| `vcn_issue_virtual_card` | Virtual Card Issuance | **Required** | Issue a Visa virtual card (PAN) with embedded spending rules |
+| `bip_initiate_payment` | B2B Payments | **Required** | Initiate a Buyer-Initiated Payment (BIP) |
+| `bip_get_status` | B2B Payments | — | Get current status of a BIP payment |
+| `bip_cancel_payment` | B2B Payments | — | Cancel a pending BIP payment |
+| `sip_submit_request` | B2B Payments | — | Supplier submits a payment requisition |
+| `sip_approve_payment` | B2B Payments | **Required** | Buyer approves a SIP requisition — triggers fund movement |
+| `sip_reject_payment` | B2B Payments | — | Buyer rejects a supplier payment requisition |
+| `settlement_initiate` | Settlement | — | Settle a payment on Visa rails (USD or Card) |
+| `vpa_create_buyer` | VPA Management | — | Create a government agency buyer profile |
+| `vpa_process_payment` | VPA Management | — | Process a VPA payment from buyer to supplier |
+
+### Guardrail system
+
+Three tools require explicit human confirmation before executing — they issue real payment credentials or move funds:
+
+- **`vcn_issue_virtual_card`** — issues a Visa PAN (real card number + CVV)
+- **`bip_initiate_payment`** — provisions a virtual card locked to a specific invoice
+- **`sip_approve_payment`** — approves a supplier requisition and triggers fund movement
+
+**Phase 1 — Dry run** (no `confirmationToken`): validates all inputs, returns a full preview and a time-limited `confirmationToken`. No Visa API call is made.
+
+**Phase 2 — Execute** (pass the token back): validates the token is fresh (< 5 min), matches the exact parameters from Phase 1 (SHA-256 hash), and hasn't been used before — then calls the SDK.
+
+```
+Token format:  <tool-name>:<sha256(params)>:<unix-timestamp-ms>
+
+Security:
+  Expiry            tokens expire after 5 minutes
+  Tamper detection  hash of params embedded in token — any change invalidates it
+  Replay prevention token consumed on first use, rejected on any re-use
+  Cross-tool lock   a BIP token cannot execute a VCN call, and vice versa
+```
+
+**Example conversation:**
+
+```
+You:   "Issue a virtual card for MedEquip Co., $48,500, valid June 2026"
+
+Agent: ⚠️ Confirmation required.
+
+       Preview:
+         Buyer:        9999
+         Proxy pool:   Proxy12345
+         Period:       06/01/2026 → 06/30/2026
+         Spend limit:  $48,500 (lifetime)
+
+       Pass confirmationToken to issue the card.
+
+You:   "Confirmed."
+
+Agent: ✅ Card issued.
+         PAN: 4xxx xxxx xxxx 1234
+         CVV2: 847  ·  Expiry: 06/2029
+         responseCode: "00"
+```
+
+### Environment variables
+
+| Variable | Required | Default | Description |
+|----------|:--------:|---------|-------------|
+| `VISA_USER_ID` | Live only | — | Visa API username (Two-Way SSL section) |
+| `VISA_PASSWORD` | Live only | — | Visa API password |
+| `VISA_BASE_URL` | No | `https://sandbox.api.visa.com` | Visa API base URL |
+| `VISA_CERT_PATH` | Live only | — | Path to client certificate PEM |
+| `VISA_KEY_PATH` | Live only | — | Path to private key PEM |
+| `VISA_CA_PATH` | No | — | Path to CA bundle PEM (optional) |
+| `SANDBOX_MODE` | No | `"true"` when certs absent | `"true"` = mock responses, `"false"` = live |
+
+If `VISA_CERT_PATH` or `VISA_KEY_PATH` are absent the server falls back to sandbox mode automatically, regardless of `SANDBOX_MODE`.
+
+### Natural language examples
+
+```
+# Supplier verification
+"Check if MedEquip Co. is registered in the Visa network"
+"Run Visa network checks on all 5 suppliers from this RFP"
+
+# Bid evaluation
+"Evaluate these 3 bids for our Q3 medical equipment procurement"
+"Who wins the bid? Show scores and reasoning."
+
+# Payment controls
+"Set up a medical procurement card — $50k/month limit, no ATM"
+"Emergency block account ACC-12345 — suspected fraud"
+
+# Virtual card (guardrail — shows preview before issuing)
+"Issue a virtual card for MedEquip Co., $48,500, valid June 2026 only"
+
+# BIP payment (guardrail — shows preview before initiating)
+"Initiate a BIP payment of $12,000 to HealthTech for invoice INV-2026-007"
+
+# Full flow
+"Evaluate our 3 bidders, issue a card to the winner, and settle payment"
+```
+
+### Running the MCP tests
+
+```bash
+npm run build:mcp
+
+# All tools smoke test — 20 cases
+node mcp/dist/test-tools.js
+
+# Guardrail security tests — 7 adversarial cases
+node mcp/dist/test-guardrails.js
+```
+
+### Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| "Connection closed" on Windows | Use `cmd /c node ...` instead of `node ...` |
+| nvm PATH issues | Use the absolute path: `which node` |
+| "mTLS handshake failed" | Verify cert/key match: `openssl x509 -noout -modulus -in cert.pem \| md5` vs `openssl rsa -noout -modulus -in key.pem \| md5` |
+| Token expired | Re-run without token to get a fresh one — tokens expire after 5 minutes |
+| Server doesn't start | Requires Node.js ≥ 20: `node --version` |
+
+---
+
 ## End-to-end: Full Government Procurement Flow
 
 > From supplier discovery to payment settlement in a single script.
@@ -1012,6 +1199,34 @@ node helloworld.js
 | `session.stream(delayMs?)` | `AsyncGenerator` | Yield state after each step |
 | `session.isSettled()` | `boolean` | True when complete |
 | `session.reset()` | `void` | Reset to idle |
+
+</details>
+
+<details>
+<summary>📘 MCP Server — tool index</summary>
+
+| Tool | Confirmation | SDK call |
+|------|:------------:|---------|
+| `sms_check_supplier` | — | `visaNetwork.check()` |
+| `sms_bulk_check_suppliers` | — | `visaNetwork.bulkCheck()` |
+| `ai_evaluate_bids` | — | `supplierMatcher.evaluateWithVisaCheck()` |
+| `vpc_suggest_rules` | — | `vpcService.IPC.getSuggestedRules()` |
+| `vpc_apply_rules` | — | `vpcService.IPC.setSuggestedRules()` |
+| `vpc_set_rules_manual` | — | `vpcService.Rules.setRules()` |
+| `vpc_get_rules` | — | `vpcService.Rules.getRules()` |
+| `vpc_block_account` | — | `vpcService.Rules.blockAccount()` |
+| `vpc_create_account` | — | `vpcService.AccountManagement.createAccount()` |
+| `vpc_get_transaction_history` | — | `vpcService.Reporting.getTransactionHistory()` |
+| `vcn_issue_virtual_card` | **Yes** | `vcnService.requestVirtualCard()` |
+| `bip_initiate_payment` | **Yes** | `b2bService.BIP.initiate()` |
+| `bip_get_status` | — | `b2bService.BIP.getStatus()` |
+| `bip_cancel_payment` | — | `b2bService.BIP.cancel()` |
+| `sip_submit_request` | — | `b2bService.SIP.submitRequest()` |
+| `sip_approve_payment` | **Yes** | `b2bService.SIP.approve()` |
+| `sip_reject_payment` | — | `b2bService.SIP.reject()` |
+| `settlement_initiate` | — | `settlementService.settle()` |
+| `vpa_create_buyer` | — | `vpaService.Buyer.createBuyer()` |
+| `vpa_process_payment` | — | `vpaService.Payment.processPayment()` |
 
 </details>
 

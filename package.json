@@ -16,12 +16,18 @@
     "dist",
     "README.md"
   ],
+  "bin": {
+    "visa-gov-mcp": "./mcp/dist/index.js"
+  },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",
     "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
     "typecheck": "tsc --noEmit",
     "example:payments": "npx ts-node --esm examples/payments.ts",
-    "example:procurement": "npx ts-node --esm examples/procurement.ts"
+    "example:procurement": "npx ts-node --esm examples/procurement.ts",
+    "build:mcp": "tsup --config tsup.mcp.config.ts",
+    "start:mcp": "node mcp/dist/index.js",
+    "dev:mcp": "tsx mcp/index.ts"
   },
   "keywords": [
     "visa",
@@ -43,6 +49,8 @@
     "typescript": "^5.4.0"
   },
   "dependencies": {
-    "@visa-gov/sdk": "github:ericomack1983/visa-gov-sdk"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@visa-gov/sdk": "github:ericomack1983/visa-gov-sdk",
+    "zod": "^4.3.6"
   }
 }
