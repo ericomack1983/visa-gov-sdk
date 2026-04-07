@@ -138,32 +138,10 @@ node run-tests.js --help    # full usage reference
 ## Testing
 
 <div align="center">
-  <div style="display:inline-block;border-radius:16px;overflow:hidden;border:2px solid #1A1F71;box-shadow:0 8px 40px rgba(26,31,113,0.28),0 2px 8px rgba(26,31,113,0.12);background:#0a0d1a;max-width:820px;width:100%;">
-    <video
-      id="demo-video"
-      src="./demo.mov"
-      width="100%"
-      loop
-      muted
-      playsinline
-      style="display:block;border-radius:14px;"
-    ></video>
-  </div>
-  <p style="margin-top:10px;font-size:13px;color:#6b7280;letter-spacing:0.04em;">SDK test suite — live Visa sandbox runs</p>
-</div>
 
-<script>
-(function () {
-  var v = document.getElementById('demo-video');
-  if (!v || !window.IntersectionObserver) return;
-  var io = new IntersectionObserver(function (entries) {
-    entries.forEach(function (e) {
-      if (e.isIntersecting) { v.play(); } else { v.pause(); }
-    });
-  }, { threshold: 0.3 });
-  io.observe(v);
-})();
-</script>
+https://raw.githubusercontent.com/ericomack1983/visa-gov-sdk/main/demo.mp4
+
+</div>
 
 ### Unified runner
 
