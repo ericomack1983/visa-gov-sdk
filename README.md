@@ -937,27 +937,6 @@ Security:
   <img src="./mcp_demo.gif" alt="MCP card issuance demo" width="820" style="border-radius:12px;border:2px solid #7C3AED;box-shadow:0 8px 32px rgba(124,58,237,0.25);" />
 </div>
 
-```
-You:   "Issue a virtual card for MedEquip Co., $48,500, valid June 2026"
-
-Agent: ⚠️ Confirmation required.
-
-       Preview:
-         Buyer:        9999
-         Proxy pool:   Proxy12345
-         Period:       06/01/2026 → 06/30/2026
-         Spend limit:  $48,500 (lifetime)
-
-       Pass confirmationToken to issue the card.
-
-You:   "Confirmed."
-
-Agent: ✅ Card issued.
-         PAN: 4xxx xxxx xxxx 1234
-         CVV2: 847  ·  Expiry: 06/2029
-         responseCode: "00"
-```
-
 ### Environment variables
 
 | Variable | Required | Default | Description |
