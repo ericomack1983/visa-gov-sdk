@@ -931,7 +931,11 @@ Security:
   Cross-tool lock   a BIP token cannot execute a VCN call, and vice versa
 ```
 
-**Example conversation:**
+**Example conversation session:**
+
+<div align="center">
+  <img src="./mcp_demo.gif" alt="MCP card issuance demo" width="820" style="border-radius:12px;border:2px solid #7C3AED;box-shadow:0 8px 32px rgba(124,58,237,0.25);" />
+</div>
 
 ```
 You:   "Issue a virtual card for MedEquip Co., $48,500, valid June 2026"
