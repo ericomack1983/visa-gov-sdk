@@ -939,6 +939,79 @@ Security:
   <img src="./mcp_demo.gif" alt="MCP card issuance demo" width="820" style="border-radius:12px;border:2px solid #7C3AED;box-shadow:0 8px 32px rgba(124,58,237,0.25);" />
 </div>
 
+### Live example — card issuance via MCP
+
+A complete card issuance in three natural-language calls. No code required.
+
+**Step 1 — Create a buyer profile**
+
+```
+"Create a buyer called Test Agency"
+→ vpa_create_buyer({ clientId: "CORP_001", buyerName: "Test Agency", currencyCode: "USD" })
+```
+
+```json
+{
+  "buyerId": "f5f81996-6891-4e65-b046-0a7c685a46e2",
+  "buyerName": "Test Agency",
+  "billingCurrency": "USD",
+  "status": "active",
+  "createdAt": "2026-04-15T22:51:56.907Z"
+}
+```
+
+**Step 2 — Issue virtual card (Phase 1 — preview)**
+
+```
+"Issue a virtual card for buyer f5f81996, valid April–July 2026,
+ max $5,000 USD, merchant categories 5411 and 5812 only"
+→ vcn_issue_virtual_card({ clientId, buyerId, proxyPoolId, startDate, endDate, rules })
+```
+
+```json
+{
+  "requiresConfirmation": true,
+  "preview": {
+    "period": "2026-04-15 → 2026-07-15",
+    "numberOfCards": "1",
+    "rulesCount": 2,
+    "rules": [
+      { "type": "maxAmount", "value": 5000, "currency": "USD" },
+      { "type": "merchantCategory", "allowed": ["5411", "5812"] }
+    ]
+  },
+  "confirmationToken": "vcn_issue_virtual_card:<sha256>:<timestamp>"
+}
+```
+
+> The guardrail returns a full preview and a time-limited token. No card is issued yet.
+
+**Step 3 — Confirm and issue (Phase 2 — execute)**
+
+```
+"Confirm"
+→ vcn_issue_virtual_card({ ...same params, confirmationToken })
+```
+
+```json
+{
+  "responseCode": "00",
+  "responseMessage": "Virtual card(s) issued successfully",
+  "accounts": [
+    {
+      "accountNumber": "4039 •••• •••• 6825",
+      "proxyNumber": "PRXEKLOSRSC",
+      "expiryDate": "04/2029",
+      "cvv2": "•••",
+      "status": "active"
+    }
+  ],
+  "sandboxMode": true
+}
+```
+
+The token is consumed on use — passing it a second time returns an error, preventing accidental double-issuance.
+
 ### Environment variables
 
 | Variable | Required | Default | Description |
