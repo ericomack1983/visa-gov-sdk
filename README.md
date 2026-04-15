@@ -2,7 +2,7 @@
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=1A1F71&height=140&section=header&text=%40visa-gov%2Fsdk&fontSize=48&fontColor=FFFFFF&animation=fadeIn&fontAlignY=42&desc=AI-Powered%20Government%20Procurement%20on%20Visa%20Rails&descAlignY=66&descSize=17&descColor=C8D4FF" width="100%"/>
 
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&pause=1200&color=1A1F71&center=true&vCenter=true&width=620&lines=Issue+virtual+cards+with+embedded+rules;Score+suppliers+with+6-dimension+AI;Real-time+payment+controls+on+every+card;Natural+language+%E2%86%92+payment+rules+(IPC+Gen-AI);From+discovery+to+settlement+in+one+SDK;Now+accessible+to+AI+agents+via+MCP" alt="Typing animation" />
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&pause=1200&color=1A1F71&center=true&vCenter=true&width=620&lines=Issue+virtual+cards+with+embedded+rules;Score+suppliers+with+6-dimension+AI;Real-time+payment+controls+on+every+card;Natural+language+%E2%86%92+payment+rules+(IPC+Gen-AI);From+discovery+to+settlement+in+one+SDK;20+tools+via+MCP+%E2%80%94+now+with+dedicated+B2B+AP+server" alt="Typing animation" />
 
 <br/>
 
@@ -10,6 +10,7 @@
 [![Visa API](https://img.shields.io/badge/Visa%20API-Sandbox%20%2B%20Live-1A1F71?logo=visa&logoColor=white)](https://developer.visa.com)
 [![Tests](https://img.shields.io/badge/Tests-100%20passing-22c55e?logo=checkmarx&logoColor=white)](./test-sdk.ts)
 [![MCP](https://img.shields.io/badge/MCP-20%20tools-7C3AED?logo=anthropic&logoColor=white)](./mcp/server.ts)
+[![B2B AP](https://img.shields.io/badge/B2B%20AP%20Agent-8%20tools%20%2B%202%20resources-0EA5E9?logo=anthropic&logoColor=white)](./mcp/b2b/server.ts)
 [![License](https://img.shields.io/badge/License-MIT-f59e0b)](./LICENSE)
 [![mTLS](https://img.shields.io/badge/Auth-mTLS%20Two--Way%20SSL-6366f1)](./src/client.ts)
 
@@ -149,6 +150,7 @@ node run-tests.js --help    # full usage reference
 | [7](#7--ipc--intelligent-payment-controls-gen-ai) | **IPC — Gen-AI Rules** | Natural language → payment control rules | `POST /vpc/v1/ipc/suggest` |
 | [8](#8--settlement) | **Settlement** | Multi-rail payment settlement with streaming | SDK-internal |
 | [9](#9--mcp-server--ai-agent-interface) | **MCP Server** | All 20 capabilities exposed to AI agents via natural language + guardrails | stdio transport |
+| [10](#10--b2b-ap-agent-mcp-server) | **B2B AP Agent MCP Server** | Dedicated server for AP workflow agents — BIP, SIP, guardrails, live Resources | stdio transport |
 
 ---
 
@@ -1212,6 +1214,206 @@ node helloworld.js
 | `vpa_process_payment` | — | `vpaService.Payment.processPayment()` |
 
 </details>
+
+---
+
+## 10 · B2B AP Agent MCP Server
+
+> A standalone MCP server purpose-built for **internal AP workflow agents** — procurement systems that already integrate with AI agents can wire this up independently from the full SDK server to get focused, finance-domain B2B payment tooling with zero noise from card issuance or supplier scoring.
+
+<div align="center">
+
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&pause=1200&color=0EA5E9&center=true&vCenter=true&width=680&lines=Initiate+supplier+payments+via+natural+language;Two-phase+guardrails+on+every+money-moving+action;BIP+%C2%B7+SIP+%C2%B7+Approve+%C2%B7+Reject+%C2%B7+Track;Live+payment+queue+as+MCP+Resources;Wires+into+any+MCP-compatible+procurement+system" alt="B2B AP typing animation" />
+
+</div>
+
+### How it fits
+
+```
+  Procurement System (ERP / AP workflow)
+  ────────────────────────────────────────────────────────────────────
+  AI Agent (Claude, Cursor, or any MCP client)
+       │
+       │  stdio
+       ▼
+  ┌─────────────────────────────────────────┐
+  │     visa-b2b-ap  MCP Server             │
+  │                                         │
+  │  Tools (8)                Resources (2) │
+  │  ─────────────────────────────────────  │
+  │  bip_initiate_payment  ★   b2b://pending-requisitions  │
+  │  bip_get_status            b2b://payment-history       │
+  │  bip_cancel_payment                     │
+  │  bip_resend_payment                     │
+  │  sip_submit_request                     │
+  │  sip_get_status                         │
+  │  sip_approve_payment   ★                │
+  │  sip_reject_payment                     │
+  │                                         │
+  │  ★ two-phase guardrail required         │
+  └─────────────────────────────────────────┘
+       │
+       │  mTLS (live) / sandbox (mock)
+       ▼
+  ⚡ Visa VPA Network
+```
+
+### Quick install
+
+```bash
+# Build
+npm run build:mcp:b2b
+
+# Sandbox mode — no credentials, realistic mock responses
+claude mcp add --transport stdio visa-b2b-ap \
+  -- node /path/to/visa-gov-sdk/mcp/b2b/dist/server.js
+
+# Live mode — Visa B2B API with mTLS
+claude mcp add --transport stdio visa-b2b-ap \
+  -e VISA_USER_ID=your-user-id \
+  -e VISA_PASSWORD=your-password \
+  -e VISA_BASE_URL=https://sandbox.api.visa.com \
+  -e VISA_CERT_PATH=/path/to/cert.pem \
+  -e VISA_KEY_PATH=/path/to/privateKey.pem \
+  -e VISA_CA_PATH=/path/to/ca-bundle.pem \
+  -e SANDBOX_MODE=false \
+  -- node /path/to/visa-gov-sdk/mcp/b2b/dist/server.js
+```
+
+Use `--scope user` to keep credentials out of shared `.mcp.json`:
+
+```bash
+claude mcp add --transport stdio visa-b2b-ap \
+  --scope user \
+  -e VISA_USER_ID=xxx -e VISA_PASSWORD=yyy \
+  -- node /path/to/visa-gov-sdk/mcp/b2b/dist/server.js
+```
+
+### Available tools
+
+| Tool | Flow | Confirmation | Description |
+|------|------|:------------:|-------------|
+| `bip_initiate_payment` | BIP | **Required** | Provision a virtual card locked to an invoice and push it to the supplier |
+| `bip_get_status` | BIP | — | Get current status and details of a BIP payment |
+| `bip_cancel_payment` | BIP | — | Cancel a pending BIP payment (valid while status is pending or unmatched) |
+| `bip_resend_payment` | BIP | — | Resend the card notification to the supplier |
+| `sip_submit_request` | SIP | — | Supplier submits a payment requisition — buyer is notified for approval |
+| `sip_get_status` | SIP | — | Get current status of a SIP requisition |
+| `sip_approve_payment` | SIP | **Required** | Buyer approves a requisition — triggers fund movement on Visa VPA rails |
+| `sip_reject_payment` | SIP | — | Buyer rejects a supplier payment requisition |
+
+### MCP Resources
+
+Resources are read-only context an agent can query **at any time** without consuming a tool call. Both resources are backed by the server's in-memory registry, automatically updated as tools execute.
+
+| Resource URI | Description |
+|-------------|-------------|
+| `b2b://pending-requisitions` | SIP requisitions currently awaiting buyer approval — `{ count, requisitions[], retrievedAt }` |
+| `b2b://payment-history` | Full session history — all BIP payments + all SIP requisitions, newest-first, with status breakdown |
+
+**Example: agent reads context before acting**
+```
+Agent: "How many supplier requests are waiting for my approval?"
+→ reads b2b://pending-requisitions
+← { count: 3, requisitions: [...] }
+
+Agent: "Show me the full payment history"
+→ reads b2b://payment-history
+← { bip: { total: 5 }, sip: { total: 4, pending: 1, approved: 2, rejected: 1 } }
+```
+
+### Guardrail system
+
+Two tools require explicit confirmation before executing — they move real funds:
+
+- **`bip_initiate_payment`** — provisions a Visa virtual card and pushes it to the supplier
+- **`sip_approve_payment`** — approves a supplier requisition and triggers settlement
+
+```
+Phase 1 — call without confirmationToken
+  → validates inputs
+  → returns preview (full payment details) + confirmationToken
+  → no Visa API call made
+
+Phase 2 — call again with the same parameters + confirmationToken
+  → token is verified: not expired (< 5 min), not reused, params hash matches
+  → Visa API called, funds move
+
+Token format:  <tool-name>:<sha256(params)>:<unix-timestamp-ms>
+```
+
+**Example AP workflow session:**
+
+```
+# Step 1 — check the queue
+"What supplier payment requests are waiting for approval?"
+→ reads b2b://pending-requisitions
+← 2 pending requisitions
+
+# Step 2 — inspect one
+"Get the status of requisition SIP-REQ-A1B2C3D4"
+→ sip_get_status({ clientId: "...", requisitionId: "SIP-REQ-A1B2C3D4" })
+
+# Step 3 — approve (guardrail — Phase 1)
+"Approve SIP-REQ-A1B2C3D4 for $2,300"
+→ sip_approve_payment({ ..., approvedAmount: 2300 })
+← preview: { action: "Approve SIP", approvedAmount: 2300, ... }
+   confirmationToken: "sip_approve_payment:abc123:1744..."
+
+# Step 4 — approve (guardrail — Phase 2)
+"Yes, confirm approval"
+→ sip_approve_payment({ ..., confirmationToken: "sip_approve_payment:abc123:1744..." })
+← { paymentId: "SIP-PAY-XXXXXXXX", status: "approved", approvedAt: "..." }
+
+# Step 5 — initiate a BIP for a different invoice
+"Send a $4,750 payment to SUPP-007 for invoice INV-2026-099"
+→ bip_initiate_payment({ supplierId: "SUPP-007", paymentAmount: 4750, invoiceNumber: "INV-2026-099", ... })
+← preview + confirmationToken
+
+→ bip_initiate_payment({ ..., confirmationToken: "..." })
+← { paymentId: "BIP-XXXXXXXX", virtualCard: { accountNumber: "4xxx..." }, paymentDetailUrl: "..." }
+```
+
+### BIP vs SIP — AP workflow perspective
+
+```mermaid
+sequenceDiagram
+    participant AP  as 🤖 AP Agent
+    participant MCP as visa-b2b-ap
+    participant VPA as ⚡ Visa VPA
+
+    Note over AP,VPA: BIP — buyer drives the payment
+    AP->>MCP: bip_initiate_payment (Phase 1)
+    MCP-->>AP: preview + confirmationToken
+    AP->>MCP: bip_initiate_payment (Phase 2, token)
+    MCP->>VPA: POST /paymentService/processPayments (BIP)
+    VPA-->>MCP: paymentId + virtualCard
+    MCP-->>AP: BIPPayment { virtualCard, paymentDetailUrl }
+
+    Note over AP,VPA: SIP — supplier drives the request
+    AP->>MCP: sip_submit_request
+    MCP->>VPA: POST /requisitionService (SIP)
+    VPA-->>MCP: requisitionId + virtualAccount
+    MCP-->>AP: SIPRequisition { status: pending_approval }
+    AP->>MCP: sip_approve_payment (Phase 1)
+    MCP-->>AP: preview + confirmationToken
+    AP->>MCP: sip_approve_payment (Phase 2, token)
+    MCP->>VPA: POST /paymentService/processPayments (SIP)
+    VPA-->>MCP: paymentId + status: approved
+    MCP-->>AP: SIPApprovalResult ✅
+```
+
+### Environment variables
+
+| Variable | Required | Default | Description |
+|----------|:--------:|---------|-------------|
+| `VISA_USER_ID` | Live only | — | Visa API username |
+| `VISA_PASSWORD` | Live only | — | Visa API password |
+| `VISA_BASE_URL` | No | `https://sandbox.api.visa.com` | Visa API base URL |
+| `VISA_CERT_PATH` | Live only | — | Path to client certificate PEM |
+| `VISA_KEY_PATH` | Live only | — | Path to private key PEM |
+| `VISA_CA_PATH` | No | — | Path to CA bundle PEM |
+| `SANDBOX_MODE` | No | `"true"` when certs absent | Set to `"false"` to connect to live Visa API |
 
 ---
 

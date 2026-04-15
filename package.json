@@ -27,7 +27,10 @@
     "example:procurement": "npx ts-node --esm examples/procurement.ts",
     "build:mcp": "tsup --config tsup.mcp.config.ts",
     "start:mcp": "node mcp/dist/index.js",
-    "dev:mcp": "tsx mcp/index.ts"
+    "dev:mcp": "tsx mcp/index.ts",
+    "build:mcp:b2b": "tsup --config tsup.mcp-b2b.config.ts",
+    "start:mcp:b2b": "node mcp/b2b/dist/server.js",
+    "dev:mcp:b2b": "tsx mcp/b2b/server.ts"
   },
   "keywords": [
     "visa",
