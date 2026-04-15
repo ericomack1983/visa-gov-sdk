@@ -84,7 +84,7 @@ graph TB
 
         subgraph Controls["🔒 Controls Layer"]
             VPC["VPCService\nB2B Payment Controls"]:::controls
-            IPC["IPC Gen-AI\nNatural Language → Rules"]:::controls
+            IPC["🤖 IPC Gen-AI\nNatural Language → Rules"]:::controls
         end
     end
 
