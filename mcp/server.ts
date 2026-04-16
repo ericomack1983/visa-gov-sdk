@@ -716,20 +716,75 @@ server.tool(
   'vpa_create_buyer',
   'Create a government agency buyer profile in the VPA system.',
   {
-    clientId:     z.string(),
-    buyerName:    z.string(),
-    currencyCode: z.string().optional(),
+    clientId: z.string().describe('Visa-assigned client ID, e.g. "B2BWS_1_2_3029"'),
   },
   async (input) => {
     try {
+      const messageId = Date.now().toString();
       const result = await vpaService.Buyer.createBuyer({
-        messageId:                 crypto.randomUUID(),
-        clientId:                  input.clientId,
-        billingCurrency:           input.currencyCode ?? '840',
-        paymentNotificationConfig: { emailNotification: false },
-        authorizationControlConfig: { authorizationControlEnabled: true },
-      });
-      return ok({ ...result, buyerName: input.buyerName });
+        messageId,
+        clientId:                    input.clientId,
+        templateName:                messageId,
+        templateDescription:         'VPP Template',
+        responseFileConfig:          null,
+        contactInfo:                 null,
+        buyerFeatureConfig:          null,
+        rvaReconciliationFileConfig: null,
+        vanConfig:                   null,
+        paymentFileCommConfig:       null,
+        reconciliationFileConfig:    null,
+        proxyConfig: {
+          holdDays:             2,
+          bucketedProxyEnabled: false,
+          autoRefreshEnabled:   false,
+        },
+        boostPaymentConfig: {
+          boostPaymentEnabled: false,
+        },
+        stripePaymentConfig: {
+          remittanceNotificationEnabled: null,
+          stripePaymentEnabled:          false,
+        },
+        stpPaymentConfig: {
+          remittanceNotificationEnabled: false,
+          stpPaymentEnabled:             false,
+        },
+        webServicesConfig: null,
+        paymentConfig: {
+          securityCodeRequired: false,
+          allowableCurrencies:  ['USD'],
+          expirationDays:       30,
+          billingCurrency:      'USD',
+          expirationBufferDays: 5,
+          paymentAdviceOption:  'C',
+        },
+        paymentSecurityConfig: {
+          defaultSecurityFieldCode:       1,
+          defaultSecurityQuestion:        'Credential Text',
+          customSecurityQuestions:        null,
+          customSecurityQuestionsEnabled: false,
+        },
+        approvalWorkflowConfig: {
+          workflowFunctionCodes: ['AUCL', 'LCRC', 'PYIN', 'PYRN'],
+          workflowConfigEnabled: true,
+        },
+        authorizationControlConfig: {
+          issuerHoldingBID:   '10029012',
+          authControlEnabled: true,
+          alertsEnabled:      false,
+        },
+        paymentNotificationConfig: {
+          defaultBuyerLanguageCode:            'en_US',
+          supplierReminderNotificationDays:    7,
+          dateFormat:                          'DDMMYYYY',
+          supplierReminderNotificationEnabled: true,
+          attachRemittanceFileDetails:         false,
+        },
+        processorConfig: {
+          closeAccount: null,
+        },
+      } as any);
+      return ok(result);
     } catch (e: unknown) {
       return err(e instanceof Error ? e.message : String(e));
     }
