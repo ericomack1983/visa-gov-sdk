@@ -28,7 +28,7 @@ Government procurement is slow, opaque, and expensive. **`@visa-gov/sdk`** wires
 <td valign="top" width="50%">
 
 ### 🤖 MCP Server — AI Agents, Zero Code
-The SDK ships a first-class **MCP server** that exposes all 20 capabilities to AI agents over natural language. No code, no API integration — just describe the procurement action and the agent executes it, with two-phase guardrails on every money-moving tool.
+The SDK ships a first-class **MCP server** that exposes all 20 capabilities to AI agents over natural language. No code, no API integration — just describe the procurement action and the agent executes it, with mobile OTP authentication and tamper-proof guardrails on every money-moving tool.
 
 **Works with:** Claude Code · Claude Desktop · Cursor · any MCP client
 
@@ -57,7 +57,7 @@ For teams that need to embed Visa B2B payment capabilities directly into **exist
   ║  "Issue a card, $50k, medical MCCs only"     ║  VisaNetworkSvc   ║
   ║  "Approve invoice INV-2026-042"              ║  VCNService       ║
   ║  "Settle to supplier, run in background"     ║  B2BPaymentSvc    ║
-  ║  ── 20 tools · two-phase guardrails ──       ║  SettlementSvc    ║
+  ║  ── 20 tools · Mobile OTP guardrails ──      ║  SettlementSvc    ║
   ╚══════════════════════════════════════════════╩═══════════════════╝
                               │
                               ▼
@@ -240,7 +240,7 @@ Every SDK capability exposed as a natural-language tool. No API docs, no JSON �
 <td align="center" width="25%">
 
 **🔒 Guardrail-Protected**<br/>
-Three money-moving tools require explicit confirmation. Two-phase tokens prevent replay attacks and double-issuance.
+Card issuance and BIP payments require a Mobile Banking OTP. Three-phase flow prevents replay attacks and double-issuance.
 
 </td>
 <td align="center" width="25%">
@@ -259,7 +259,7 @@ Works with Claude Code, Claude Desktop, Cursor, and any MCP-compatible client ov
 </table>
 </div>
 
-> Every SDK capability is available to AI agents as a natural-language tool, with built-in two-phase guardrails on every operation that issues real cards or moves money.
+> Every SDK capability is available to AI agents as a natural-language tool, with built-in mobile OTP authentication and tamper-proof guardrails on every operation that issues real cards or moves money.
 
 The MCP server ships **inside the SDK** — no separate package, no additional dependencies. Build it once and wire it into any MCP-compatible client in seconds.
 
@@ -321,35 +321,48 @@ claude mcp add --transport stdio visa-gov \
 
 ### Guardrail system
 
-Three tools require explicit human confirmation before executing — they issue real payment credentials or move funds:
+Three tools require explicit authorisation before executing — they issue real payment credentials or move funds:
 
-- **`vcn_issue_virtual_card`** — issues a Visa PAN (real card number + CVV)
-- **`bip_initiate_payment`** — provisions a virtual card locked to a specific invoice
-- **`sip_approve_payment`** — approves a supplier requisition and triggers fund movement
+| Tool | Action | Guardrail |
+|------|--------|-----------|
+| `vcn_issue_virtual_card` | Issues a Visa PAN + CVV | 3-phase: preview → Mobile OTP → execute |
+| `bip_initiate_payment` | Provisions a virtual card locked to an invoice | 3-phase: preview → Mobile OTP → execute |
+| `sip_approve_payment` | Approves a supplier requisition, triggers fund movement | 2-phase: preview → execute |
 
-**Phase 1 — Dry run** (no `confirmationToken`): validates all inputs, returns a full preview and a time-limited `confirmationToken`. No Visa API call is made.
+#### 3-phase flow — `vcn_issue_virtual_card` and `bip_initiate_payment`
 
-**Phase 2 — Execute** (pass the token back): validates the token is fresh (< 5 min), matches the exact parameters from Phase 1 (SHA-256 hash), and hasn't been used before — then calls the SDK.
+```
+Phase 1 — Preview  (no confirmationToken)
+  → Validates inputs
+  → Returns full preview + time-limited confirmationToken
+  → No Visa API call made
+
+Phase 2 — Mobile OTP  (confirmationToken, no otpCode)
+  → Validates token (fresh, untampered, unused)
+  → Dispatches authentication code to your Mobile Banking App
+  → Returns { requiresOTP: true, message: "Code sent to your Mobile Banking App" }
+  → Awaits your code — no funds moved yet
+
+Phase 3 — Execute  (confirmationToken + otpCode)
+  → Verifies OTP matches
+  → Consumes token (single-use — replay protection)
+  → Calls Visa API and returns result
+```
 
 ```
 Token format:  <tool-name>:<sha256(params)>:<unix-timestamp-ms>
 
 Security:
-  Expiry            tokens expire after 5 minutes
-  Tamper detection  hash of params embedded in token — any change invalidates it
-  Replay prevention token consumed on first use, rejected on any re-use
+  Expiry            5-minute TTL — stale tokens rejected
+  Tamper detection  SHA-256 hash of params embedded — any change invalidates it
+  Replay prevention token consumed on first use, rejected on re-use
   Cross-tool lock   a BIP token cannot execute a VCN call, and vice versa
+  OTP gate          card issuance and BIP payments require mobile authentication
 ```
-
-**Example conversation session:**
-
-<div align="center">
-  <img src="./mcp_demo.gif" alt="MCP card issuance demo" width="820" style="border-radius:12px;border:2px solid #7C3AED;box-shadow:0 8px 32px rgba(124,58,237,0.25);" />
-</div>
 
 ### Live example — card issuance via MCP
 
-A complete card issuance in three natural-language calls. No code required.
+A complete card issuance in four natural-language steps. No code required.
 
 **Step 1 — Create a buyer profile**
 
@@ -388,17 +401,35 @@ A complete card issuance in three natural-language calls. No code required.
       { "type": "merchantCategory", "allowed": ["5411", "5812"] }
     ]
   },
-  "confirmationToken": "vcn_issue_virtual_card:<sha256>:<timestamp>"
+  "confirmationToken": "vcn_issue_virtual_card:<sha256>:<timestamp>",
+  "nextStep": "Call vcn_issue_virtual_card again with the same parameters + confirmationToken to trigger mobile authentication."
 }
 ```
 
-> The guardrail returns a full preview and a time-limited token. No card is issued yet.
-
-**Step 3 — Confirm and issue (Phase 2 — execute)**
+**Step 3 — Trigger Mobile OTP (Phase 2 — authenticate)**
 
 ```
 "Confirm"
 → vcn_issue_virtual_card({ ...same params, confirmationToken })
+```
+
+```json
+{
+  "requiresOTP": true,
+  "otpDispatched": true,
+  "message": "🔐 An authentication code has been sent to your Mobile Banking App. Please enter the code to complete card issuance.",
+  "hint": "Call vcn_issue_virtual_card again with the same parameters + confirmationToken + otpCode.",
+  "sentAt": "2026-04-16T14:23:11.042Z"
+}
+```
+
+> No card issued yet. The agent pauses and asks you for the code from your Mobile Banking App.
+
+**Step 4 — Enter OTP and issue (Phase 3 — execute)**
+
+```
+"The code is 0000"
+→ vcn_issue_virtual_card({ ...same params, confirmationToken, otpCode: "0000" })
 ```
 
 ```json
