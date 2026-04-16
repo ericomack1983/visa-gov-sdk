@@ -394,26 +394,18 @@ server.tool(
 
 server.tool(
   'vcn_issue_virtual_card',
-  '⚠️ REQUIRES CONFIRMATION. Issue a Visa virtual card (PAN) with embedded spending rules via VirtualCardRequisition. Requires a proxyPoolId (from vpa_create_proxy_pool) and employee/cardholder info. First call returns a preview. Pass confirmationToken to execute.',
+  '⚠️ REQUIRES CONFIRMATION. Issue a Visa virtual card (PAN) with embedded spending rules. First call returns a preview and confirmationToken. Pass the token back in a second call to actually issue the card.',
   {
-    confirmationToken:      z.string().optional(),
-    clientId:               z.string(),
-    buyerId:                z.string(),
-    proxyPoolId:            z.string().describe('proxyAccountNumber returned by vpa_create_proxy_pool'),
-    // Employee / cardholder (all required by Visa API)
-    employeeFirstName:      z.string(),
-    employeeLastName:       z.string(),
-    employeeEmail:          z.string(),
-    employeeId:             z.string().describe('Max 10 chars'),
-    companyAdminEmail:      z.string(),
-    // Validity window
-    startDate:              z.string().describe('YYYY-MM-DD'),
-    endDate:                z.string().describe('YYYY-MM-DD'),
-    timeZone:               z.string().optional().describe('UTC offset, e.g. UTC-6'),
-    rules:                  z.array(z.any()),
-    // Optional card metadata
-    optionalfield1:         z.string().optional(),
-    optionalfield2:         z.string().optional(),
+    confirmationToken: z.string().optional(),
+    clientId:          z.string(),
+    buyerId:           z.string(),
+    proxyPoolId:       z.string(),
+    numberOfCards:     z.string().optional(),
+    startDate:         z.string(),
+    endDate:           z.string(),
+    timeZone:          z.string().optional(),
+    rules:             z.array(z.any()),
+    memo:              z.string().optional(),
   },
   async (input) => {
     try {
@@ -426,14 +418,15 @@ server.tool(
           requiresConfirmation: true,
           confirmationToken:    token,
           preview: {
-            clientId:    params.clientId,
-            buyerId:     params.buyerId,
-            proxyPoolId: params.proxyPoolId,
-            employee:    `${params.employeeFirstName} ${params.employeeLastName} <${params.employeeEmail}>`,
-            period:      `${params.startDate} → ${params.endDate}`,
-            timeZone:    params.timeZone ?? 'UTC',
-            rulesCount:  params.rules.length,
-            rules:       params.rules,
+            clientId:      params.clientId,
+            buyerId:       params.buyerId,
+            proxyPoolId:   params.proxyPoolId,
+            numberOfCards: params.numberOfCards ?? '1',
+            period:        `${params.startDate} → ${params.endDate}`,
+            timeZone:      params.timeZone ?? 'UTC',
+            rulesCount:    params.rules.length,
+            rules:         params.rules,
+            memo:          params.memo ?? '',
           },
           instructions: 'Review the preview above. To issue the card, call vcn_issue_virtual_card again with the same parameters plus confirmationToken.',
         });
@@ -448,22 +441,15 @@ server.tool(
         clientId:    params.clientId,
         buyerId:     params.buyerId,
         messageId:   Date.now().toString(),
+        action:      'A' as const,
+        numberOfCards: params.numberOfCards ?? '1',
         proxyPoolId: params.proxyPoolId,
-        employee: {
-          firstName:          params.employeeFirstName,
-          lastName:           params.employeeLastName,
-          eMailId:            params.employeeEmail,
-          employeeId:         params.employeeId,
-          companyAdminEMailId: params.companyAdminEmail,
-        },
-        requisitionDetails: [{
+        requisitionDetails: {
           startDate: params.startDate,
           endDate:   params.endDate,
           timeZone:  params.timeZone,
           rules:     params.rules,
-        }],
-        ...(params.optionalfield1 && { optionalfield1: params.optionalfield1 }),
-        ...(params.optionalfield2 && { optionalfield2: params.optionalfield2 }),
+        },
       };
 
       const options = apiConfig
@@ -730,121 +716,20 @@ server.tool(
   'vpa_create_buyer',
   'Create a government agency buyer profile in the VPA system.',
   {
-    clientId:               z.string().describe('Visa-assigned client ID, e.g. "B2BWS_1_2_3029"'),
-    buyerName:              z.string().optional().describe('Buyer display name (populates contactInfo if provided)'),
-    currencyCode:           z.string().optional().describe('ISO alpha currency code. Defaults to "USD"'),
-    expirationDays:         z.number().optional().describe('Card expiration days. Defaults to 30'),
-    expirationBufferDays:   z.number().optional().describe('Buffer days before expiration. Defaults to 5'),
-    issuerHoldingBID:       z.string().optional().describe('Issuer holding BID for auth control, e.g. "10029012"'),
-    workflowFunctionCodes:  z.array(z.string()).optional().describe('Approval workflow codes. Defaults to ["AUCL","LCRC","PYIN","PYRN"]'),
-    templateName:           z.string().optional().describe('Buyer template name'),
-    templateDescription:    z.string().optional().describe('Buyer template description. Defaults to "VPP Template"'),
+    clientId:     z.string(),
+    buyerName:    z.string(),
+    currencyCode: z.string().optional(),
   },
   async (input) => {
     try {
-      const currency   = input.currencyCode ?? 'USD';
-      const messageId  = Date.now().toString();
       const result = await vpaService.Buyer.createBuyer({
-        messageId,
-        clientId:            input.clientId,
-        templateName:        input.templateName  ?? messageId,
-        templateDescription: input.templateDescription ?? 'VPP Template',
-        responseFileConfig:          null,
-        buyerFeatureConfig:          null,
-        rvaReconciliationFileConfig: null,
-        vanConfig:                   null,
-        paymentFileCommConfig:       null,
-        reconciliationFileConfig:    null,
-        contactInfo: input.buyerName
-          ? { buyerName: input.buyerName, emailAddress: '', phone1: '', countryCode: 'USA', addressLine1: '', city: '', state: '', zipCode: '' }
-          : null,
-        proxyConfig: {
-          holdDays:              2,
-          bucketedProxyEnabled:  false,
-          autoRefreshEnabled:    false,
-        },
-        boostPaymentConfig: { boostPaymentEnabled: false },
-        stripePaymentConfig: {
-          remittanceNotificationEnabled: null,
-          stripePaymentEnabled:          false,
-        },
-        stpPaymentConfig: {
-          remittanceNotificationEnabled: false,
-          stpPaymentEnabled:             false,
-        },
-        webServicesConfig: null,
-        paymentConfig: {
-          securityCodeRequired:  false,
-          allowableCurrencies:   [currency],
-          expirationDays:        input.expirationDays       ?? 30,
-          billingCurrency:       currency,
-          expirationBufferDays:  input.expirationBufferDays ?? 5,
-          paymentAdviceOption:   'C',
-        },
-        paymentSecurityConfig: {
-          defaultSecurityFieldCode:       1,
-          defaultSecurityQuestion:        'Credential Text',
-          customSecurityQuestions:        null,
-          customSecurityQuestionsEnabled: false,
-        },
-        approvalWorkflowConfig: {
-          workflowFunctionCodes: input.workflowFunctionCodes ?? ['AUCL', 'LCRC', 'PYIN', 'PYRN'],
-          workflowConfigEnabled: true,
-        },
-        authorizationControlConfig: {
-          issuerHoldingBID:   input.issuerHoldingBID ?? '10029012',
-          authControlEnabled: true,
-          alertsEnabled:      false,
-        },
-        paymentNotificationConfig: {
-          defaultBuyerLanguageCode:            'en_US',
-          supplierReminderNotificationDays:    7,
-          dateFormat:                          'DDMMYYYY',
-          supplierReminderNotificationEnabled: true,
-          attachRemittanceFileDetails:         false,
-        },
-        processorConfig: { closeAccount: null },
+        messageId:                 crypto.randomUUID(),
+        clientId:                  input.clientId,
+        billingCurrency:           input.currencyCode ?? '840',
+        paymentNotificationConfig: { emailNotification: false },
+        authorizationControlConfig: { authorizationControlEnabled: true },
       });
-      return ok(result);
-    } catch (e: unknown) {
-      return err(e instanceof Error ? e.message : String(e));
-    }
-  },
-);
-
-server.tool(
-  'vpa_create_proxy_pool',
-  'Create a VPA proxy pool for a buyer — required before issuing virtual cards. The proxyAccountNumber you provide becomes the proxyPoolId used in vcn_issue_virtual_card.',
-  {
-    clientId:            z.string(),
-    buyerId:             z.string(),
-    proxyAccountNumber:  z.string().describe('Pool name/ID — alphanumeric, underscore and dash only. This value is used as proxyPoolId in vcn_issue_virtual_card.'),
-    fundingAccountNumber: z.string().optional().describe('16-digit PAN to use for generating virtual accounts'),
-    authControlEnabled:  z.boolean().optional().describe('Enable VPC auth controls. Required for VIP/VPP pools.'),
-    proxyPoolType:       z.enum(['1', '2']).optional().describe('1=Multi-use (recycled), 2=One-time use. Defaults to 1.'),
-    proxyAccountType:    z.enum(['1', '2']).optional().describe('1=SUA adjustable, 2=SUA. Defaults to 2.'),
-    initialOrderCount:   z.string().optional(),
-    minAvailableAccounts: z.string().optional(),
-    reOrderCount:        z.string().optional(),
-    creditLimit:         z.string().optional(),
-  },
-  async (input) => {
-    try {
-      const result = await vpaService.ProxyPool.createProxyPool({
-        messageId:            crypto.randomUUID(),
-        clientId:             input.clientId,
-        buyerId:              input.buyerId,
-        proxyAccountNumber:   input.proxyAccountNumber,
-        ...(input.fundingAccountNumber  && { fundingAccountNumber:  input.fundingAccountNumber }),
-        ...(input.authControlEnabled !== undefined && { authControlEnabled: input.authControlEnabled }),
-        ...(input.proxyPoolType      && { proxyPoolType:     input.proxyPoolType }),
-        ...(input.proxyAccountType   && { proxyAccountType:  input.proxyAccountType }),
-        ...(input.initialOrderCount  && { initialOrderCount: input.initialOrderCount }),
-        ...(input.minAvailableAccounts && { minAvailableAccounts: input.minAvailableAccounts }),
-        ...(input.reOrderCount       && { reOrderCount:      input.reOrderCount }),
-        ...(input.creditLimit        && { creditLimit:        input.creditLimit }),
-      });
-      return ok({ ...result, proxyPoolId: input.proxyAccountNumber });
+      return ok({ ...result, buyerName: input.buyerName });
     } catch (e: unknown) {
       return err(e instanceof Error ? e.message : String(e));
     }

@@ -61,128 +61,44 @@ export type VPAApprovalWorkflowCode = 'PYIN' | 'PYRN' | 'LCRC' | 'AUCL';
 
 // ── Buyer ─────────────────────────────────────────────────────────────────────
 
-/** Buyer contact / address info required by buyer/create. */
-export interface VPABuyerContactInfo {
-  /** Buyer name as it appears in the system */
-  buyerName: string;
-  /** Primary email address for payment notifications */
-  emailAddress: string;
-  /** Primary phone number (digits only) */
-  phone1: string;
-  /** ISO alpha-3 country code, e.g. "USA" */
-  countryCode: string;
-  /** Street address line 1 */
-  addressLine1: string;
-  city: string;
-  state: string;
-  zipCode: string;
-  /**
-   * Buyer ID to assign — Visa uses this as the buyer identifier.
-   * Provide the same value you intend to use as buyerId in all subsequent calls.
-   */
-  buyerId?: string;
-  /** Usually the same value as buyerId */
-  companyId?: string;
-  contactName?: string;
-  addressLine2?: string;
-  addressLine3?: string;
-  phone2?: string;
-  phone3?: string;
-  phoneExt1?: string;
-  phoneExt2?: string;
-  phoneExt3?: string;
-  defaultCurrencyCode?: string;
-}
-
-/** Payment configuration for buyer/create. */
-export interface VPABuyerPaymentConfig {
-  /** ISO 4217 alpha currency code, e.g. "USD" */
-  billingCurrency: string;
-  expirationDays?: number;
-  expirationBufferDays?: number;
-  allowableCurrencies?: string[];
-  securityCodeRequired?: boolean;
-  paymentAdviceOption?: string;
+export interface VPAPaymentNotificationConfig {
+  emailNotification: boolean;
+  notificationEmailAddress?: string;
+  smsNotification?: boolean;
+  smsPhoneNumber?: string;
 }
 
 export interface VPAAuthorizationControlConfig {
-  /** Must be true for buyers with VPC/auth controls enabled */
-  authControlEnabled: boolean;
-  issuerHoldingBID?: string;
-  alertsEnabled?: boolean;
-}
-
-export interface VPAPaymentNotificationConfig {
-  dateFormat?: VPADateFormat;
-  defaultLanguageCode?: VPALanguageCode;
-  /** Visa API field name */
-  defaultBuyerLanguageCode?: string;
-  attachRemittanceDetails?: boolean;
-  /** Visa API field name */
-  attachRemittanceFileDetails?: boolean;
-  supplierReminderNotificationEnabled?: boolean;
-  supplierReminderNotificationDays?: number;
-}
-
-export interface VPAPaymentSecurityConfig {
-  defaultSecurityFieldCode?: number;
-  defaultSecurityQuestion?: string;
-  customSecurityQuestions?: null;
-  customSecurityQuestionsEnabled?: boolean;
-}
-
-export interface VPAApprovalWorkflowConfig {
-  workflowFunctionCodes?: string[];
-  workflowConfigEnabled?: boolean;
-}
-
-export interface VPAStripePaymentConfig {
-  remittanceNotificationEnabled?: boolean | null;
-  stripePaymentEnabled?: boolean;
-}
-
-export interface VPAStpPaymentConfig {
-  remittanceNotificationEnabled?: boolean;
-  stpPaymentEnabled?: boolean;
+  authorizationControlEnabled: boolean;
 }
 
 export interface VPACreateBuyerParams {
   messageId: string;
   clientId: string;
-  templateName?: string;
-  templateDescription?: string;
-  contactInfo?: VPABuyerContactInfo | null;
-  paymentConfig: VPABuyerPaymentConfig;
+  implementationType?: string;
+  visaBusinessId?: string;
+  billingType?: string;
+  /** ISO 4217 numeric, e.g. "840" for USD. */
+  billingCurrency: VPACurrencyCode;
+  paymentNotificationConfig: VPAPaymentNotificationConfig;
+  dateFormat?: VPADateFormat;
   authorizationControlConfig: VPAAuthorizationControlConfig;
-  paymentNotificationConfig?: VPAPaymentNotificationConfig;
-  paymentSecurityConfig?: VPAPaymentSecurityConfig;
-  approvalWorkflowConfig?: VPAApprovalWorkflowConfig;
-  boostPaymentConfig?: { boostPaymentEnabled?: boolean } | null;
-  stripePaymentConfig?: VPAStripePaymentConfig | null;
-  stpPaymentConfig?: VPAStpPaymentConfig | null;
-  proxyConfig?: {
-    holdDays?: number;
-    bucketedProxyEnabled?: boolean;
-    autoRefreshEnabled?: boolean;
-  } | null;
-  webServicesConfig?: {
-    webServicesEnabled?: boolean;
-    apiCodes?: string[];
-    suppressSupplierNotification?: boolean;
-  } | null;
-  responseFileConfig?: null;
-  buyerFeatureConfig?: null;
-  rvaReconciliationFileConfig?: null;
-  vanConfig?: null;
-  paymentFileCommConfig?: null;
-  reconciliationFileConfig?: null;
-  processorConfig?: { closeAccount?: null } | null;
+  expirationDays?: number;
+  expirationBufferDays?: number;
+  allowableCurrencies?: VPACurrencyCode[];
+  defaultLanguageCode?: VPALanguageCode;
+  holdDays?: number;
+  suppressSupplierNotification?: boolean;
+  approvalWorkflowCodes?: VPAApprovalWorkflowCode[];
 }
 
 export interface VPABuyer {
   buyerId: string;
   clientId: string;
+  billingCurrency: VPACurrencyCode;
   status: string;
+  paymentNotificationConfig?: VPAPaymentNotificationConfig;
+  expirationDays?: number;
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
@@ -190,7 +106,6 @@ export interface VPABuyer {
 
 export type VPAUpdateBuyerParams = Partial<Omit<VPACreateBuyerParams, 'clientId'>> & {
   messageId: string;
-  buyerId: string;
 };
 
 // ── Buyer Template ────────────────────────────────────────────────────────────
@@ -304,36 +219,23 @@ export interface VPAPaymentControls {
 
 export interface VPACreateProxyPoolParams {
   messageId: string;
-  /**
-   * Proxy pool account number / name — this becomes the proxyPoolId used
-   * in VirtualCardRequisition. Required. Alphanumeric, no special chars
-   * except underscore and dash.
-   */
-  proxyAccountNumber: string;
-  /** Credit limit for all accounts in this pool (bucketed proxy only). */
-  creditLimit?: string;
-  /** Number of accounts to auto-order when minAvailableAccounts is reached. */
-  reOrderCount?: string;
-  /** (1) Multi-use pool, (2) One-time use pool. Defaults to 1. */
-  proxyPoolType?: '1' | '2';
-  /** (1) SUA adjustable, (2) SUA. Defaults to 2 for VIP/VIPP. */
-  proxyAccountType?: '1' | '2';
-  /** Initial accounts to provision at pool creation. */
-  initialOrderCount?: string;
-  /** Enable auth controls (VPC) for this pool. Required for VIP/VPP pools. */
-  authControlEnabled?: boolean;
-  /** Funding account PAN to generate VIP/VPP accounts. */
-  fundingAccountNumber?: string;
-  /** Minimum available accounts before auto-reorder triggers. */
-  minAvailableAccounts?: string;
+  proxyPoolName?: string;
+  /** Initial virtual accounts to provision (ready within ~15 minutes). */
+  initialOrderCount?: number;
+  /** Minimum threshold before auto-reorder triggers. */
+  minAvailableAccounts?: number;
+  /** Number of accounts to auto-order when threshold is reached. */
+  reOrderCount?: number;
 }
 
 export interface VPAProxyPool {
   proxyPoolId: string;
-  proxyAccountNumber?: string;
   buyerId: string;
-  statusCode?: string;
-  statusDesc?: string;
+  proxyPoolName?: string;
+  initialOrderCount?: number;
+  minAvailableAccounts?: number;
+  reOrderCount?: number;
+  availableAccounts?: number;
   status?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -342,15 +244,12 @@ export interface VPAProxyPool {
 
 export type VPAUpdateProxyPoolParams = Partial<Omit<VPACreateProxyPoolParams, 'messageId'>> & {
   messageId: string;
-  /** The proxy pool to update */
-  proxyAccountNumber: string;
 };
 
 export interface VPAManageProxyPoolParams {
   messageId: string;
-  /** Action type for ManageProxy */
-  actionType: string;
-  proxyAccountDetails?: unknown[];
+  /** Processor PANs to manually populate (legacy processor PANs). */
+  accounts: string[];
 }
 
 // ── Supplier ──────────────────────────────────────────────────────────────────
@@ -364,58 +263,28 @@ export type VPASupplierAccountModel = 'SUA' | 'LODGED';
 export interface VPACreateSupplierParams {
   messageId: string;
   clientId: string;
-  buyerId: string;
-  /** Caller-assigned supplier ID (e.g. "SUPP-001") */
-  supplierId: string;
   supplierName: string;
-  /** Supplier type — use "VPA" for standard B2B suppliers */
-  supplierType: string;
-  supplierAddressLine1: string;
-  supplierCity: string;
-  /** ISO alpha-3 country code, e.g. "USA" */
-  supplierCountryCode: string;
-  supplierAddressLine2?: string;
-  supplierState?: string;
-  supplierPostalCode?: string;
-  primaryEmailAddress?: string;
-  alternateEmailAddresses?: Array<{ alternateEmailAddress: string }>;
-  defaultCurrencyCode?: string;
-  supplierLanguage?: string;
-  supplierDate?: string;
-  supplierGLCode?: string;
-  paymentControlRequired?: string;
-  securityCodeRequired?: string;
-  invoiceAttachmentRequired?: string;
-  reminderNotificationRequired?: string;
-  reminderNotificationDays?: string;
-  paymentExpirationDays?: string;
-  cardDetails?: {
-    actionType?: string;
-    accountLimit?: string;
-    accountType?: string;
-    proxyNumber?: string;
-    accountNumber?: string;
-    currencyCode?: string;
-    expirationDate?: string;
-  };
+  emailAddress?: string;
+  paymentDeliveryMethod?: VPAPaymentDeliveryMethod;
+  accountModel?: VPASupplierAccountModel;
+  remittanceInfo?: Record<string, unknown>;
 }
 
 export interface VPASupplier {
   supplierId: string;
   clientId?: string;
-  buyerId?: string;
   supplierName: string;
-  supplierType?: string;
-  primaryEmailAddress?: string;
+  emailAddress?: string;
+  paymentDeliveryMethod?: VPAPaymentDeliveryMethod;
+  accountModel?: VPASupplierAccountModel;
   status: string;
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
 }
 
-export type VPAUpdateSupplierParams = Partial<Omit<VPACreateSupplierParams, 'clientId' | 'buyerId'>> & {
+export type VPAUpdateSupplierParams = Partial<Omit<VPACreateSupplierParams, 'clientId'>> & {
   messageId: string;
-  supplierId: string;
 };
 
 export interface VPAManageSupplierAccountParams {
