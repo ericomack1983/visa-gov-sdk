@@ -172,16 +172,16 @@ node run-tests.js --help    # full usage reference
 
 | # | Feature | What it does | Real API |
 |:-:|---------|-------------|:-------:|
-| **[🤖 9](#9--mcp-server--ai-agent-interface)** | **MCP Server** ⭐ | **20 tools over natural language — full procurement lifecycle, no code** | **stdio transport** |
+| **[🤖 1](#1--mcp-server--ai-agent-interface)** | **MCP Server** ⭐ | **20 tools over natural language — full procurement lifecycle, no code** | **stdio transport** |
 | **[🤖 10](#10--b2b-ap-agent-mcp-server)** | **B2B AP Agent MCP Server** ⭐ | **Dedicated AP workflow agent — BIP, SIP, live Resources, drop-in for any ERP** | **stdio transport** |
-| [1](#1--b2b-virtual-account-payments) | B2B Virtual Account Payments | Issue virtual cards with embedded spending rules | `POST /vpa/v1/cards/provisioning` |
-| [2](#2--full-vpa-account-management) | Full VPA Account Management | Buyers, funding accounts, proxy pools, suppliers, payments | `/vpa/v1/*` |
-| [3](#3--bip--sip-payment-flows) | BIP & SIP Payment Flows | Buyer-initiated and supplier-initiated B2B flows | `POST /vpa/v1/paymentService/*` |
-| [4](#4--visa-supplier-match-service-sms) | Visa Supplier Match Service | Verify suppliers on the Visa network, get confidence score | `POST /visasuppliermatchingservice/v1/search` |
-| [5](#5--ai-supplier-evaluation) | AI Supplier Evaluation | Score & rank bids across 6 weighted dimensions | SDK-internal |
-| [6](#6--visa-b2b-payment-controls-vpc) | Visa B2B Payment Controls | Real-time spending rules on every virtual card | `/vpc/v1/*` |
-| [7](#7--ipc--intelligent-payment-controls-gen-ai) | IPC — Gen-AI Rules | Natural language → payment control rules | `POST /vpc/v1/ipc/suggest` |
-| [8](#8--settlement) | Settlement | Multi-rail payment settlement with streaming | SDK-internal |
+| [2](#2--b2b-virtual-account-payments) | B2B Virtual Account Payments | Issue virtual cards with embedded spending rules | `POST /vpa/v1/cards/provisioning` |
+| [3](#3--full-vpa-account-management) | Full VPA Account Management | Buyers, funding accounts, proxy pools, suppliers, payments | `/vpa/v1/*` |
+| [4](#4--bip--sip-payment-flows) | BIP & SIP Payment Flows | Buyer-initiated and supplier-initiated B2B flows | `POST /vpa/v1/paymentService/*` |
+| [5](#5--visa-supplier-match-service-sms) | Visa Supplier Match Service | Verify suppliers on the Visa network, get confidence score | `POST /visasuppliermatchingservice/v1/search` |
+| [6](#6--ai-supplier-evaluation) | AI Supplier Evaluation | Score & rank bids across 6 weighted dimensions | SDK-internal |
+| [7](#7--visa-b2b-payment-controls-vpc) | Visa B2B Payment Controls | Real-time spending rules on every virtual card | `/vpc/v1/*` |
+| [8](#8--ipc--intelligent-payment-controls-gen-ai) | IPC — Gen-AI Rules | Natural language → payment control rules | `POST /vpc/v1/ipc/suggest` |
+| [9](#9--settlement) | Settlement | Multi-rail payment settlement with streaming | SDK-internal |
 
 </div>
 
@@ -220,669 +220,7 @@ node run-tests.js [suite...] [--list] [--help]
 
 ---
 
-## 1 · B2B Virtual Account Payments
-
-> Issue a virtual card number (PAN) that only works for a specific supplier, amount range, time window, and merchant category — and expires automatically.
-
-### How it works
-
-```mermaid
-sequenceDiagram
-    participant Gov as 🏛️ Government Agency
-    participant SDK as @visa-gov/sdk
-    participant Visa as ⚡ Visa Network
-
-    Gov->>SDK: requestVirtualCard(payload)
-    Note over SDK: Validate · Build rules<br/>(SPV, MCC, CHN, BHR…)
-    SDK->>Visa: POST /vpa/v1/cards/provisioning
-    Visa-->>SDK: { accountNumber, proxyNumber, cvv2 }
-    SDK-->>Gov: VCNRequestResponse
-    Note over Gov: Share PAN with supplier
-    Gov->>Visa: Supplier charges virtual card
-    Visa->>Visa: Enforce embedded rules ⚡
-    Visa-->>Gov: Approved ✅ or Declined ❌
-```
-
-### Code
-
-```ts
-import { VCNService, buildSPVRule, buildBlockRule, buildAmountRule } from '@visa-gov/sdk';
-
-const vcn = new VCNService();  // sandbox — no credentials needed
-
-const response = await vcn.requestVirtualCard({
-  clientId:      'B2BWS_1_1_9999',
-  buyerId:       '9999',
-  messageId:     Date.now().toString(),
-  action:        'A',
-  numberOfCards: '1',
-  proxyPoolId:   'Proxy12345',
-  requisitionDetails: {
-    startDate: '2025-06-01',
-    endDate:   '2025-06-30',
-    timeZone:  'UTC-5',
-    rules: [
-      buildSPVRule({ spendLimitAmount: 50_000, maxAuth: 5, currencyCode: '840', rangeType: 'monthly' }),
-      buildAmountRule('PUR', 10_000, '840'),   // max $10k per transaction
-      buildBlockRule('ECOM'),                   // no online purchases
-      buildBlockRule('ATM'),                    // no cash withdrawals
-    ],
-  },
-});
-
-console.log(response.responseCode);              // "00" = success
-console.log(response.accounts[0].accountNumber); // Virtual card PAN
-console.log(response.accounts[0].expiryDate);    // MM/YYYY
-console.log(response.accounts[0].proxyNumber);   // Proxy reference
-```
-
-**Connect to the live Visa API:**
-
-```ts
-const response = await vcn.requestVirtualCard(payload, {
-  baseUrl:     'https://sandbox.api.visa.com',
-  credentials: { userId: process.env.VISA_USER_ID!, password: process.env.VISA_PASSWORD! },
-  tls: {
-    cert: fs.readFileSync('./certs/cert.pem', 'utf-8'),
-    key:  fs.readFileSync('./certs/privateKey-....pem', 'utf-8'),
-    ca:   caBundle,
-  },
-});
-```
-
-### Rule reference
-
-<details>
-<summary>📋 Expand rule code reference</summary>
-
-| Code | Category | Description |
-|------|----------|-------------|
-| `SPV` | Spending | Spend velocity — rolling period limit + auth count cap |
-| `PUR` | Spending | Single-purchase amount cap |
-| `EAM` | Spending | Exact amount match |
-| `VPAS` | Spending | Virtual payment account specific — exact match with tolerance |
-| `TOLRNC` | Spending | Tolerance band — min/max delta around expected amount |
-| `XBRA` | Spending | Cross-border amount cap |
-| `ATML` | Spending | ATM cash withdrawal limit |
-| `CAID` | Merchant | Lock card to a single Card Acceptor ID |
-| `HOT` | Merchant | Block hotels / lodging |
-| `AUTO` | Merchant | Block auto dealers / rentals |
-| `AIR` | Merchant | Block airlines |
-| `ECOM` | Channel | Block e-commerce / online |
-| `ATM` | Channel | Block ATM cash withdrawals |
-| `CNP` | Channel | Block card-not-present |
-| `XBR` | Channel | Block cross-border transactions |
-| `NOC` | Other | No controls — open card |
-
-</details>
-
----
-
-## 2 · Full VPA Account Management
-
-> The full B2B Virtual Account Payment lifecycle — from onboarding a buyer to reconciling payments — mapped 1:1 to Visa API endpoints.
-
-### The procurement payment lifecycle
-
-```mermaid
-flowchart LR
-    A["🏛️ Create Buyer\n/buyerManagement/buyer/create"] -->
-    B["🏦 Add Funding Account\n/accountManagement/fundingAccount/add"] -->
-    C["🗂️ Create Proxy Pool\n/suaPoolMaintenance/proxyPool/create"] -->
-    D["🏢 Onboard Supplier\n/supplierManagement/supplier/create"] -->
-    E["💳 Issue Virtual Card\n/accountManagement/VirtualCardRequisition"] -->
-    F["💸 Process Payment\n/paymentService/processPayments"] -->
-    G["📊 Reconcile\n/paymentService/getPaymentDetails"]
-```
-
-```ts
-import { VPAService } from '@visa-gov/sdk';
-
-const vpa = new VPAService({ baseUrl, credentials, tls });  // or VPAService.sandbox()
-
-// 1 — Create a buyer (government agency profile)
-const buyer = await vpa.Buyer.createBuyer({
-  clientId:   'GOV-AGENCY-001',
-  buyerName:  'Ministry of Health',
-  currencyCode: '840',
-});
-
-// 2 — Add the agency's funding bank account
-const account = await vpa.FundingAccount.addFundingAccount({
-  clientId: buyer.clientId,
-  buyerId:  buyer.buyerId,
-  accountNumber: '4111111111111111',
-});
-
-// 3 — Create a proxy pool (pre-provisioned card numbers)
-const pool = await vpa.ProxyPool.createProxyPool({
-  clientId:    buyer.clientId,
-  proxyPoolId: 'HEALTH-POOL-2025',
-  size:        100,
-});
-
-// 4 — Onboard a supplier
-const supplier = await vpa.Supplier.createSupplier({
-  clientId:     buyer.clientId,
-  supplierName: 'MedEquip Co.',
-  accountNumber: '4222222222222222',
-});
-
-// 5 — Issue a virtual card for the purchase
-const requisition = await vpa.FundingAccount.requestVirtualAccount({
-  clientId:   buyer.clientId,
-  buyerId:    buyer.buyerId,
-  proxyPoolId: pool.proxyPoolId,
-  amount:     48_500,
-  currencyCode: '840',
-});
-
-// 6 — Process the payment to the supplier
-const payment = await vpa.Payment.processPayment({
-  clientId:   buyer.clientId,
-  buyerId:    buyer.buyerId,
-  supplierId: supplier.supplierId,
-  amount:     48_500,
-  currencyCode: '840',
-  paymentMethod: 'SIP',
-});
-```
-
----
-
-## 3 · BIP & SIP Payment Flows
-
-> Two opposing directions of B2B payment initiation — both running on Visa VPA rails.
-
-### BIP — Buyer Initiated Payment
-
-The buyer provisions a single-use virtual card locked to the invoice and pushes it to the supplier before any charge happens.
-
-```mermaid
-sequenceDiagram
-    participant Buyer as 🏛️ Buyer (Gov Agency)
-    participant SDK   as B2BPaymentService.BIP
-    participant Visa  as ⚡ Visa API
-    participant Supp  as 🏢 Supplier
-
-    Buyer->>SDK: BIP.initiate({ supplierId, paymentAmount, invoiceNumber })
-    SDK->>Visa: POST /vpa/v1/paymentService/processPayments<br/>(paymentDeliveryMethod: BIP)
-    Visa-->>SDK: { paymentId, accountNumber, expiryDate }
-    SDK->>Visa: POST /vpa/v1/paymentService/getPaymentDetailURL
-    Visa-->>SDK: { url, expiresAt }
-    SDK-->>Buyer: BIPPayment { virtualCard, paymentDetailUrl }
-    Buyer->>Supp: Share paymentDetailUrl
-    Supp->>Visa: Charge virtual card
-    Visa-->>Buyer: Settlement notification ✅
-```
-
-```ts
-import { B2BPaymentService } from '@visa-gov/sdk';
-
-const b2b = B2BPaymentService.sandbox();
-
-// Buyer provisions a locked virtual card for this invoice
-const payment = await b2b.BIP.initiate({
-  messageId:     crypto.randomUUID(),
-  clientId:      'B2BWS_1_1_9999',
-  buyerId:       '9999',
-  supplierId:    'SUPP-001',
-  paymentAmount: 4_750.00,
-  currencyCode:  '840',
-  invoiceNumber: 'INV-2026-042',
-  memo:          'Q2 medical equipment',
-});
-
-console.log(payment.virtualCard?.accountNumber);  // 4xxx xxxx xxxx xxxx
-console.log(payment.paymentDetailUrl);            // supplier card-entry URL
-```
-
-### SIP — Supplier Initiated Payment
-
-The supplier submits an invoice and waits for the buyer to approve.
-
-```mermaid
-sequenceDiagram
-    participant Supp  as 🏢 Supplier
-    participant SDK   as B2BPaymentService.SIP
-    participant Visa  as ⚡ Visa API
-    participant Buyer as 🏛️ Buyer (Gov Agency)
-
-    Supp->>SDK: SIP.submitRequest({ invoiceNumber, requestedAmount, startDate, endDate })
-    SDK->>Visa: POST /vpa/v1/requisitionService<br/>(paymentDeliveryMethod: SIP)
-    Visa-->>SDK: { requisitionId, accountNumber, expiryDate }
-    SDK-->>Supp: SIPRequisition { status: pending_approval, virtualAccount }
-    Visa-->>Buyer: Notification — new payment request
-    Buyer->>SDK: SIP.approve({ requisitionId, approvedAmount })
-    SDK->>Visa: POST /vpa/v1/paymentService/processPayments<br/>(requisitionId, SIP)
-    Visa-->>SDK: { paymentId, status: approved }
-    SDK-->>Buyer: SIPApprovalResult ✅
-    Visa-->>Supp: Funds on virtual account
-```
-
-```ts
-// Supplier side
-const req = await b2b.SIP.submitRequest({
-  messageId:       crypto.randomUUID(),
-  clientId:        'B2BWS_1_1_9999',
-  supplierId:      'SUPP-001',
-  buyerId:         '9999',
-  requestedAmount: 2_300.00,
-  currencyCode:    '840',
-  invoiceNumber:   'INV-SUPP-2026-007',
-  startDate:       '2026-04-01',
-  endDate:         '2026-04-30',
-});
-
-// Buyer side — approve and settle
-const result = await b2b.SIP.approve({
-  messageId:      crypto.randomUUID(),
-  clientId:       'B2BWS_1_1_9999',
-  buyerId:        '9999',
-  requisitionId:  req.requisitionId,
-  approvedAmount: 2_300.00,
-  currencyCode:   '840',
-});
-```
-
-### BIP vs SIP — at a glance
-
-| | BIP (Buyer Initiated) | SIP (Supplier Initiated) |
-|---|---|---|
-| **Who starts it** | Buyer | Supplier |
-| **Card direction** | Buyer provisions → pushed to supplier | VPA provisions → issued to supplier |
-| **Use case** | POs, fixed-cost contracts | Invoice-driven, milestone billing |
-| **SDK method** | `b2b.BIP.initiate()` | `b2b.SIP.submitRequest()` + `.approve()` |
-
----
-
-## 4 · Visa Supplier Match Service (SMS)
-
-> One API call returns whether a supplier accepts Visa, at what confidence level, and their MCC code — flowing directly into the AI scoring model.
-
-### How it works
-
-```mermaid
-sequenceDiagram
-    participant App  as Your App
-    participant SDK  as VisaNetworkService
-    participant Visa as ⚡ Visa SMS API
-
-    App->>SDK: check({ supplierName, supplierCountryCode })
-    SDK->>Visa: POST /visasuppliermatchingservice/v1/search
-    Visa-->>SDK: { matchStatus, matchConfidence, matchDetails }
-    SDK-->>App: VisaNetworkCheckResult
-
-    Note over App: visaAcceptMark    → true/false<br/>confidenceScore  → 0–100<br/>mcc              → "5047"<br/>supportsL2       → true
-```
-
-### Confidence → Score mapping
-
-```
-matchConfidence   matchStatus   visaMatchScore   Meaning
-──────────────────────────────────────────────────────────────
-High              Yes           ████████████ 95  Strongly registered
-Medium            Yes           ████████     70  Registered, lower certainty
-Low               Yes           █████        45  Possibly registered
-None / No         No            ░░░░░░░░░░░░  0  Not found
-```
-
-### Code
-
-```ts
-import { VisaNetworkService } from '@visa-gov/sdk';
-
-const visa = VisaNetworkService.sandbox();
-
-// Single check
-const result = await visa.check({
-  supplierName:        'MedEquip Co.',
-  supplierCountryCode: 'US',
-  supplierCity:        'New York',
-});
-console.log(result.visaAcceptMark);   // true
-console.log(result.confidenceScore);  // 95
-console.log(result.mcc);              // "5047"
-
-// Batch check (parallel, ≤10 concurrent)
-const batch = await visa.bulkCheck([
-  { supplierName: 'MedEquip Co.',        supplierCountryCode: 'US' },
-  { supplierName: 'HealthTech Supplies', supplierCountryCode: 'US' },
-  { supplierName: 'Budget Supplies Co',  supplierCountryCode: 'US' },
-]);
-// MedEquip Co.:        score=95  MCC=5047
-// HealthTech Supplies: score=95  MCC=5047
-// Budget Supplies Co:  score=0   MCC=          ← not registered
-
-// Enrich supplier domain objects in bulk
-const enriched = await visa.enrichSuppliers(suppliers, 'US');
-```
-
-**Connect to the real Visa SMS API:**
-
-```ts
-const visa = new VisaNetworkService({
-  baseUrl:  'https://sandbox.api.visa.com',
-  userId:   process.env.VISA_USER_ID!,
-  password: process.env.VISA_PASSWORD!,
-  cert:     fs.readFileSync('./certs/cert.pem', 'utf-8'),
-  key:      fs.readFileSync('./certs/privateKey-....pem', 'utf-8'),
-  ca:       caBundle,
-});
-```
-
----
-
-## 5 · AI Supplier Evaluation
-
-> A transparent, auditable AI scoring engine that evaluates every bid across 6 weighted dimensions — including live Visa network verification — and generates a plain-English narrative.
-
-### Scoring model
-
-```mermaid
-graph LR
-    subgraph Inputs["📥 Inputs"]
-        P["💰 Bid Amount"]
-        D["🚚 Delivery Days"]
-        R["⭐ Past Performance"]
-        C["📋 Compliance\n+ Certifications"]
-        K["⚠️ Risk Score"]
-        V["🔵 Visa Match Score"]
-    end
-
-    subgraph Weights["⚖️ Default Weights"]
-        P --> W1["25% Price"]
-        D --> W2["20% Delivery"]
-        R --> W3["20% Reliability"]
-        C --> W4["15% Compliance"]
-        K --> W5["10% Risk"]
-        V --> W6["10% Visa Match"]
-    end
-
-    W1 & W2 & W3 & W4 & W5 & W6 --> COMP["🏆 Composite Score\n0 – 100"]
-    COMP --> RANK["📊 Ranked Bids + Narrative"]
-```
-
-### Code
-
-```ts
-import { SupplierMatcher, VisaNetworkService } from '@visa-gov/sdk';
-
-// Basic evaluation
-const matcher = new SupplierMatcher();
-const result  = matcher.evaluate({
-  rfp: { id: 'rfp-001', budgetCeiling: 50_000 },
-  bids,
-  suppliers,
-});
-
-console.log(result.winner.supplier.name);  // "MedEquip Co."
-console.log(result.winner.composite);      // 87
-console.log(result.narrative);
-// "MedEquip Co. leads with a composite score of 87/100,
-//  reflecting strong overall performance…"
-
-// With live Visa registry verification
-const matcher = SupplierMatcher.withVisaNetwork(VisaNetworkService.sandbox());
-const { rankedBids, winner, visaChecks } = await matcher.evaluateWithVisaCheck({
-  rfp: { id: 'rfp-001', budgetCeiling: 50_000 },
-  bids,
-  suppliers,
-  countryCode: 'US',
-});
-
-for (const sb of rankedBids) {
-  const vc = visaChecks.get(sb.supplier.id);
-  console.log(`#${sb.rank}  ${sb.supplier.name}  composite=${sb.composite}  visaScore=${sb.dimensions.visaMatchScore}  MCC=${vc?.mcc}`);
-}
-// #1  MedEquip Co.             composite=83  visaScore=95  MCC=5047
-// #2  HealthTech Supplies      composite=72  visaScore=95  MCC=5047
-// #3  BudgetMed LLC            composite=58  visaScore=0   MCC=
-
-// Custom weights (auto-normalised to sum 1.0)
-const priceFocused = SupplierMatcher.withWeights({ price: 0.50 });
-```
-
-### End-to-end `evaluateWithVisaCheck` flow
-
-```mermaid
-sequenceDiagram
-    participant App  as Your App
-    participant SM   as SupplierMatcher
-    participant VNS  as VisaNetworkService
-    participant Visa as ⚡ Visa SMS API
-
-    App->>SM: evaluateWithVisaCheck({ rfp, bids, suppliers })
-    SM->>VNS: enrichSuppliers(suppliers, 'US')
-    VNS->>Visa: bulkCheck (parallel, ≤10/batch)
-    Visa-->>VNS: matchConfidence per supplier
-    VNS-->>SM: enriched suppliers + confidenceScore
-    SM->>SM: scoreBids() with visaMatchScore injected
-    SM->>SM: generateNarrative(rankedBids)
-    SM-->>App: EvaluationResult + visaChecks Map
-```
-
----
-
-## 6 · Visa B2B Payment Controls (VPC)
-
-> Every transaction against a virtual card is evaluated against your rule set *before* it's approved — spend velocity, merchant category, channel, location, and business hours.
-
-### Account state machine
-
-```mermaid
-stateDiagram-v2
-    [*]          --> Registered   : createAccount()
-    Registered   --> Active       : setRules()
-    Active       --> Evaluating   : Transaction attempt
-    Evaluating   --> Approved     : All rules pass ✅
-    Evaluating   --> Declined     : Rule triggered ❌
-    Active       --> Blocked      : blockAccount() [HOT]
-    Blocked      --> Active       : enableRules()
-    Active       --> Unrestricted : disableRules()
-    Unrestricted --> Active       : enableRules()
-    Approved     --> Active
-    Declined     --> Active
-```
-
-### Rule categories
-
-```
-┌──────────────────────────────────────────────────────────┐
-│                   VPC Rule Engine                        │
-├──────────────┬───────────────────────────────────────────┤
-│ 💰 Spending  │ SPV  Spend velocity (period + auth count) │
-│              │ SPP  Max single-transaction amount        │
-│              │ VPAS Exact amount match                   │
-├──────────────┼───────────────────────────────────────────┤
-│ 🏪 Merchant  │ MCC  Allow/block by category code         │
-│              │ MCG  Allow/block by category group        │
-├──────────────┼───────────────────────────────────────────┤
-│ 📡 Channel   │ CHN  Online / POS / ATM / Contactless     │
-├──────────────┼───────────────────────────────────────────┤
-│ 🌍 Location  │ LOC  Country allow / block list           │
-├──────────────┼───────────────────────────────────────────┤
-│ 🕐 Time      │ BHR  Days of week + time range            │
-├──────────────┼───────────────────────────────────────────┤
-│ 🚫 Emergency │ HOT  Block ALL transactions instantly     │
-└──────────────┴───────────────────────────────────────────┘
-```
-
-### Code
-
-```ts
-import { VPCService } from '@visa-gov/sdk';
-
-const vpc = VPCService.sandbox();
-
-// 1 · Register the virtual card
-const account = await vpc.AccountManagement.createAccount({
-  accountNumber: '4111111111111111',
-  contacts: [{ name: 'Procurement Officer', email: 'proc@agency.gov', notifyOn: ['transaction_declined'] }],
-});
-
-// 2 · Set real-time rules
-await vpc.Rules.setRules(account.accountId, [
-  { ruleCode: 'SPV', spendVelocity: { limitAmount: 50_000, currencyCode: '840', periodType: 'monthly', maxAuthCount: 20 } },
-  { ruleCode: 'SPP', spendPolicy:   { maxTransactionAmount: 10_000, currencyCode: '840' } },
-  { ruleCode: 'MCC', mcc:           { allowedMCCs: ['5047', '5122', '8099'] } },
-  { ruleCode: 'CHN', channel:       { allowOnline: false, allowPOS: true, allowATM: false } },
-  { ruleCode: 'BHR', businessHours: { allowedDays: [1,2,3,4,5], startTime: '08:00', endTime: '18:00', timezone: 'America/New_York' } },
-]);
-
-// 3 · Emergency block / unblock
-await vpc.Rules.blockAccount(account.accountId);   // 🚫 HOT — instant block
-await vpc.Rules.enableRules(account.accountId);    // ✅ re-enable
-
-// 4 · Report on declined transactions
-const declined = await vpc.Reporting.getTransactionHistory(account.accountId, { outcome: 'declined' });
-for (const t of declined) {
-  console.log(`❌ $${t.amount} @ ${t.merchantName} — Rule: [${t.declineReason}] ${t.declineMessage}`);
-}
-```
-
----
-
-## 7 · IPC — Intelligent Payment Controls (Gen-AI)
-
-> Describe card usage in plain English. Gen-AI translates your intent into a ready-to-apply `VPCRule[]` with a rationale and confidence score.
-
-### How it works
-
-```mermaid
-sequenceDiagram
-    participant Officer as 👤 Procurement Officer
-    participant IPC     as vpc.IPC (Gen-AI)
-    participant Visa    as ⚡ Visa VPC API
-
-    Officer->>IPC: getSuggestedRules({ prompt: "Medical procurement, $50k/mo, no ATM" })
-    IPC->>Visa: POST /vpc/v1/ipc/suggest
-    Visa-->>IPC: [ { ruleSetId, rules[], rationale, confidence } ]
-    IPC-->>Officer: IPCRuleSetResponse
-
-    Note over Officer: Review rationale + confidence score<br/>Pick the best suggestion
-
-    Officer->>IPC: setSuggestedRules(ruleSetId, accountId)
-    IPC->>Visa: POST /vpc/v1/ipc/apply
-    Visa-->>IPC: Updated VPCAccount
-    IPC-->>Officer: Rules applied ✅
-```
-
-### From prompt to rule set
-
-```
-Prompt: "Medical equipment procurement, max $50k/month, domestic, no ATM"
-                               │
-                   ┌───────────▼──────────┐
-                   │   Gen-AI Rule Engine  │
-                   │  • Category → Medical │
-                   │  • Limit    → $50,000 │
-                   │  • Channel  → no ATM  │
-                   │  • Geography→ domestic│
-                   └───────────┬──────────┘
-                               │
-          ┌────────────────────▼────────────────────┐
-          │         Suggested Rule Set               │
-          │  ruleSetId:  ipc-tpl-medical             │
-          │  confidence: 94 / 100                    │
-          │                                          │
-          │  rules:                                  │
-          │  • SPV  $50,000/month · max 50 auths     │
-          │  • MCC  allow [5047, 5122, 8099, 8049]   │
-          │  • CHN  POS=✓  Online=✓  ATM=✗           │
-          │                                          │
-          │  rationale:                              │
-          │  "Medical procurement: healthcare MCCs   │
-          │   allowed; $50,000/month; POS and        │
-          │   online; ATM blocked."                  │
-          └─────────────────────────────────────────┘
-```
-
-### Built-in sandbox templates
-
-| Keyword in prompt | Template | Confidence | Monthly limit |
-|-------------------|----------|:----------:|:-------------:|
-| `medical`, `health`, `pharma` | Medical Procurement | 94% | $50,000 |
-| `travel`, `airline`, `hotel` | Travel | 88% | $10,000 |
-| `office`, `stationery`, `supplies` | Office Supplies | 91% | $2,000 |
-| `IT`, `software`, `cloud`, `tech` | IT Services | 89% | $25,000 |
-| *(anything else)* | General Purpose | 75% | $5,000 |
-
-### Code
-
-```ts
-// Get AI-generated rule suggestions
-const { suggestions } = await vpc.IPC.getSuggestedRules({
-  prompt:       'Medical equipment procurement, max $50k per month, no ATM',
-  currencyCode: '840',
-});
-
-console.log(suggestions[0].confidence);  // 94
-console.log(suggestions[0].rationale);
-// "Medical procurement: healthcare MCCs allowed; $50,000/month; POS and online; ATM blocked."
-
-// Apply with one call — rules go live in near real-time
-await vpc.IPC.setSuggestedRules(suggestions[0].ruleSetId, account.accountId);
-```
-
----
-
-## 8 · Settlement
-
-> After a virtual card purchase, `SettlementService` models the full Visa settlement lifecycle with streaming state for real-time UI updates.
-
-### Settlement flow
-
-```
-  Initiated ──────────────────────────────────── Settled
-     │                  │                  │         │
-     ●──────────────────●──────────────────●─────────●
-  [idle]         [authorized]       [processing]  [settled]
-    0%               33%                66%          100%
-```
-
-```mermaid
-sequenceDiagram
-    participant App  as Your App
-    participant SS   as SettlementService
-    participant Rail as 💳 Visa Rail
-
-    App->>SS: settle({ method: 'USD', orderId, amount })
-    SS->>Rail: Authorize payment
-    Rail-->>SS: authorized (33%)
-    SS->>Rail: Process settlement
-    Rail-->>SS: processing (66%)
-    SS->>Rail: Confirm settlement
-    Rail-->>SS: settled (100%)
-    SS-->>App: SettlementResult { settledAt, durationMs }
-```
-
-### Code
-
-```ts
-import { SettlementService } from '@visa-gov/sdk';
-
-const service = new SettlementService();
-
-// Automated (fire-and-forget)
-const result = await service.settle({ method: 'USD', orderId: 'ORD-001', amount: 48_500 });
-console.log(`Settled in ${result.durationMs}ms at ${result.settledAt}`);
-
-// Streaming (real-time UI updates)
-const session = service.initiate({ method: 'Card', orderId: 'ORD-002', amount: 12_000 });
-
-for await (const state of session.stream(1_500)) {  // 1.5s per step
-  console.log(`${state.progress}% — ${state.currentStep}`);
-  updateProgressBar(state.progress);
-}
-// 33% — authorized
-// 66% — processing
-// 100% — settled
-```
-
----
-
-## 9 · MCP Server — AI Agent Interface
+## 1 · MCP Server — AI Agent Interface
 
 <div align="center">
 
@@ -1150,6 +488,671 @@ node mcp/dist/test-guardrails.js
 | "mTLS handshake failed" | Verify cert/key match: `openssl x509 -noout -modulus -in cert.pem \| md5` vs `openssl rsa -noout -modulus -in key.pem \| md5` |
 | Token expired | Re-run without token to get a fresh one — tokens expire after 5 minutes |
 | Server doesn't start | Requires Node.js ≥ 20: `node --version` |
+
+---
+
+
+---
+
+## 2 · B2B Virtual Account Payments
+
+> Issue a virtual card number (PAN) that only works for a specific supplier, amount range, time window, and merchant category — and expires automatically.
+
+### How it works
+
+```mermaid
+sequenceDiagram
+    participant Gov as 🏛️ Government Agency
+    participant SDK as @visa-gov/sdk
+    participant Visa as ⚡ Visa Network
+
+    Gov->>SDK: requestVirtualCard(payload)
+    Note over SDK: Validate · Build rules<br/>(SPV, MCC, CHN, BHR…)
+    SDK->>Visa: POST /vpa/v1/cards/provisioning
+    Visa-->>SDK: { accountNumber, proxyNumber, cvv2 }
+    SDK-->>Gov: VCNRequestResponse
+    Note over Gov: Share PAN with supplier
+    Gov->>Visa: Supplier charges virtual card
+    Visa->>Visa: Enforce embedded rules ⚡
+    Visa-->>Gov: Approved ✅ or Declined ❌
+```
+
+### Code
+
+```ts
+import { VCNService, buildSPVRule, buildBlockRule, buildAmountRule } from '@visa-gov/sdk';
+
+const vcn = new VCNService();  // sandbox — no credentials needed
+
+const response = await vcn.requestVirtualCard({
+  clientId:      'B2BWS_1_1_9999',
+  buyerId:       '9999',
+  messageId:     Date.now().toString(),
+  action:        'A',
+  numberOfCards: '1',
+  proxyPoolId:   'Proxy12345',
+  requisitionDetails: {
+    startDate: '2025-06-01',
+    endDate:   '2025-06-30',
+    timeZone:  'UTC-5',
+    rules: [
+      buildSPVRule({ spendLimitAmount: 50_000, maxAuth: 5, currencyCode: '840', rangeType: 'monthly' }),
+      buildAmountRule('PUR', 10_000, '840'),   // max $10k per transaction
+      buildBlockRule('ECOM'),                   // no online purchases
+      buildBlockRule('ATM'),                    // no cash withdrawals
+    ],
+  },
+});
+
+console.log(response.responseCode);              // "00" = success
+console.log(response.accounts[0].accountNumber); // Virtual card PAN
+console.log(response.accounts[0].expiryDate);    // MM/YYYY
+console.log(response.accounts[0].proxyNumber);   // Proxy reference
+```
+
+**Connect to the live Visa API:**
+
+```ts
+const response = await vcn.requestVirtualCard(payload, {
+  baseUrl:     'https://sandbox.api.visa.com',
+  credentials: { userId: process.env.VISA_USER_ID!, password: process.env.VISA_PASSWORD! },
+  tls: {
+    cert: fs.readFileSync('./certs/cert.pem', 'utf-8'),
+    key:  fs.readFileSync('./certs/privateKey-....pem', 'utf-8'),
+    ca:   caBundle,
+  },
+});
+```
+
+### Rule reference
+
+<details>
+<summary>📋 Expand rule code reference</summary>
+
+| Code | Category | Description |
+|------|----------|-------------|
+| `SPV` | Spending | Spend velocity — rolling period limit + auth count cap |
+| `PUR` | Spending | Single-purchase amount cap |
+| `EAM` | Spending | Exact amount match |
+| `VPAS` | Spending | Virtual payment account specific — exact match with tolerance |
+| `TOLRNC` | Spending | Tolerance band — min/max delta around expected amount |
+| `XBRA` | Spending | Cross-border amount cap |
+| `ATML` | Spending | ATM cash withdrawal limit |
+| `CAID` | Merchant | Lock card to a single Card Acceptor ID |
+| `HOT` | Merchant | Block hotels / lodging |
+| `AUTO` | Merchant | Block auto dealers / rentals |
+| `AIR` | Merchant | Block airlines |
+| `ECOM` | Channel | Block e-commerce / online |
+| `ATM` | Channel | Block ATM cash withdrawals |
+| `CNP` | Channel | Block card-not-present |
+| `XBR` | Channel | Block cross-border transactions |
+| `NOC` | Other | No controls — open card |
+
+</details>
+
+---
+
+## 3 · Full VPA Account Management
+
+> The full B2B Virtual Account Payment lifecycle — from onboarding a buyer to reconciling payments — mapped 1:1 to Visa API endpoints.
+
+### The procurement payment lifecycle
+
+```mermaid
+flowchart LR
+    A["🏛️ Create Buyer\n/buyerManagement/buyer/create"] -->
+    B["🏦 Add Funding Account\n/accountManagement/fundingAccount/add"] -->
+    C["🗂️ Create Proxy Pool\n/suaPoolMaintenance/proxyPool/create"] -->
+    D["🏢 Onboard Supplier\n/supplierManagement/supplier/create"] -->
+    E["💳 Issue Virtual Card\n/accountManagement/VirtualCardRequisition"] -->
+    F["💸 Process Payment\n/paymentService/processPayments"] -->
+    G["📊 Reconcile\n/paymentService/getPaymentDetails"]
+```
+
+```ts
+import { VPAService } from '@visa-gov/sdk';
+
+const vpa = new VPAService({ baseUrl, credentials, tls });  // or VPAService.sandbox()
+
+// 1 — Create a buyer (government agency profile)
+const buyer = await vpa.Buyer.createBuyer({
+  clientId:   'GOV-AGENCY-001',
+  buyerName:  'Ministry of Health',
+  currencyCode: '840',
+});
+
+// 2 — Add the agency's funding bank account
+const account = await vpa.FundingAccount.addFundingAccount({
+  clientId: buyer.clientId,
+  buyerId:  buyer.buyerId,
+  accountNumber: '4111111111111111',
+});
+
+// 3 — Create a proxy pool (pre-provisioned card numbers)
+const pool = await vpa.ProxyPool.createProxyPool({
+  clientId:    buyer.clientId,
+  proxyPoolId: 'HEALTH-POOL-2025',
+  size:        100,
+});
+
+// 4 — Onboard a supplier
+const supplier = await vpa.Supplier.createSupplier({
+  clientId:     buyer.clientId,
+  supplierName: 'MedEquip Co.',
+  accountNumber: '4222222222222222',
+});
+
+// 5 — Issue a virtual card for the purchase
+const requisition = await vpa.FundingAccount.requestVirtualAccount({
+  clientId:   buyer.clientId,
+  buyerId:    buyer.buyerId,
+  proxyPoolId: pool.proxyPoolId,
+  amount:     48_500,
+  currencyCode: '840',
+});
+
+// 6 — Process the payment to the supplier
+const payment = await vpa.Payment.processPayment({
+  clientId:   buyer.clientId,
+  buyerId:    buyer.buyerId,
+  supplierId: supplier.supplierId,
+  amount:     48_500,
+  currencyCode: '840',
+  paymentMethod: 'SIP',
+});
+```
+
+---
+
+## 4 · BIP & SIP Payment Flows
+
+> Two opposing directions of B2B payment initiation — both running on Visa VPA rails.
+
+### BIP — Buyer Initiated Payment
+
+The buyer provisions a single-use virtual card locked to the invoice and pushes it to the supplier before any charge happens.
+
+```mermaid
+sequenceDiagram
+    participant Buyer as 🏛️ Buyer (Gov Agency)
+    participant SDK   as B2BPaymentService.BIP
+    participant Visa  as ⚡ Visa API
+    participant Supp  as 🏢 Supplier
+
+    Buyer->>SDK: BIP.initiate({ supplierId, paymentAmount, invoiceNumber })
+    SDK->>Visa: POST /vpa/v1/paymentService/processPayments<br/>(paymentDeliveryMethod: BIP)
+    Visa-->>SDK: { paymentId, accountNumber, expiryDate }
+    SDK->>Visa: POST /vpa/v1/paymentService/getPaymentDetailURL
+    Visa-->>SDK: { url, expiresAt }
+    SDK-->>Buyer: BIPPayment { virtualCard, paymentDetailUrl }
+    Buyer->>Supp: Share paymentDetailUrl
+    Supp->>Visa: Charge virtual card
+    Visa-->>Buyer: Settlement notification ✅
+```
+
+```ts
+import { B2BPaymentService } from '@visa-gov/sdk';
+
+const b2b = B2BPaymentService.sandbox();
+
+// Buyer provisions a locked virtual card for this invoice
+const payment = await b2b.BIP.initiate({
+  messageId:     crypto.randomUUID(),
+  clientId:      'B2BWS_1_1_9999',
+  buyerId:       '9999',
+  supplierId:    'SUPP-001',
+  paymentAmount: 4_750.00,
+  currencyCode:  '840',
+  invoiceNumber: 'INV-2026-042',
+  memo:          'Q2 medical equipment',
+});
+
+console.log(payment.virtualCard?.accountNumber);  // 4xxx xxxx xxxx xxxx
+console.log(payment.paymentDetailUrl);            // supplier card-entry URL
+```
+
+### SIP — Supplier Initiated Payment
+
+The supplier submits an invoice and waits for the buyer to approve.
+
+```mermaid
+sequenceDiagram
+    participant Supp  as 🏢 Supplier
+    participant SDK   as B2BPaymentService.SIP
+    participant Visa  as ⚡ Visa API
+    participant Buyer as 🏛️ Buyer (Gov Agency)
+
+    Supp->>SDK: SIP.submitRequest({ invoiceNumber, requestedAmount, startDate, endDate })
+    SDK->>Visa: POST /vpa/v1/requisitionService<br/>(paymentDeliveryMethod: SIP)
+    Visa-->>SDK: { requisitionId, accountNumber, expiryDate }
+    SDK-->>Supp: SIPRequisition { status: pending_approval, virtualAccount }
+    Visa-->>Buyer: Notification — new payment request
+    Buyer->>SDK: SIP.approve({ requisitionId, approvedAmount })
+    SDK->>Visa: POST /vpa/v1/paymentService/processPayments<br/>(requisitionId, SIP)
+    Visa-->>SDK: { paymentId, status: approved }
+    SDK-->>Buyer: SIPApprovalResult ✅
+    Visa-->>Supp: Funds on virtual account
+```
+
+```ts
+// Supplier side
+const req = await b2b.SIP.submitRequest({
+  messageId:       crypto.randomUUID(),
+  clientId:        'B2BWS_1_1_9999',
+  supplierId:      'SUPP-001',
+  buyerId:         '9999',
+  requestedAmount: 2_300.00,
+  currencyCode:    '840',
+  invoiceNumber:   'INV-SUPP-2026-007',
+  startDate:       '2026-04-01',
+  endDate:         '2026-04-30',
+});
+
+// Buyer side — approve and settle
+const result = await b2b.SIP.approve({
+  messageId:      crypto.randomUUID(),
+  clientId:       'B2BWS_1_1_9999',
+  buyerId:        '9999',
+  requisitionId:  req.requisitionId,
+  approvedAmount: 2_300.00,
+  currencyCode:   '840',
+});
+```
+
+### BIP vs SIP — at a glance
+
+| | BIP (Buyer Initiated) | SIP (Supplier Initiated) |
+|---|---|---|
+| **Who starts it** | Buyer | Supplier |
+| **Card direction** | Buyer provisions → pushed to supplier | VPA provisions → issued to supplier |
+| **Use case** | POs, fixed-cost contracts | Invoice-driven, milestone billing |
+| **SDK method** | `b2b.BIP.initiate()` | `b2b.SIP.submitRequest()` + `.approve()` |
+
+---
+
+## 5 · Visa Supplier Match Service (SMS)
+
+> One API call returns whether a supplier accepts Visa, at what confidence level, and their MCC code — flowing directly into the AI scoring model.
+
+### How it works
+
+```mermaid
+sequenceDiagram
+    participant App  as Your App
+    participant SDK  as VisaNetworkService
+    participant Visa as ⚡ Visa SMS API
+
+    App->>SDK: check({ supplierName, supplierCountryCode })
+    SDK->>Visa: POST /visasuppliermatchingservice/v1/search
+    Visa-->>SDK: { matchStatus, matchConfidence, matchDetails }
+    SDK-->>App: VisaNetworkCheckResult
+
+    Note over App: visaAcceptMark    → true/false<br/>confidenceScore  → 0–100<br/>mcc              → "5047"<br/>supportsL2       → true
+```
+
+### Confidence → Score mapping
+
+```
+matchConfidence   matchStatus   visaMatchScore   Meaning
+──────────────────────────────────────────────────────────────
+High              Yes           ████████████ 95  Strongly registered
+Medium            Yes           ████████     70  Registered, lower certainty
+Low               Yes           █████        45  Possibly registered
+None / No         No            ░░░░░░░░░░░░  0  Not found
+```
+
+### Code
+
+```ts
+import { VisaNetworkService } from '@visa-gov/sdk';
+
+const visa = VisaNetworkService.sandbox();
+
+// Single check
+const result = await visa.check({
+  supplierName:        'MedEquip Co.',
+  supplierCountryCode: 'US',
+  supplierCity:        'New York',
+});
+console.log(result.visaAcceptMark);   // true
+console.log(result.confidenceScore);  // 95
+console.log(result.mcc);              // "5047"
+
+// Batch check (parallel, ≤10 concurrent)
+const batch = await visa.bulkCheck([
+  { supplierName: 'MedEquip Co.',        supplierCountryCode: 'US' },
+  { supplierName: 'HealthTech Supplies', supplierCountryCode: 'US' },
+  { supplierName: 'Budget Supplies Co',  supplierCountryCode: 'US' },
+]);
+// MedEquip Co.:        score=95  MCC=5047
+// HealthTech Supplies: score=95  MCC=5047
+// Budget Supplies Co:  score=0   MCC=          ← not registered
+
+// Enrich supplier domain objects in bulk
+const enriched = await visa.enrichSuppliers(suppliers, 'US');
+```
+
+**Connect to the real Visa SMS API:**
+
+```ts
+const visa = new VisaNetworkService({
+  baseUrl:  'https://sandbox.api.visa.com',
+  userId:   process.env.VISA_USER_ID!,
+  password: process.env.VISA_PASSWORD!,
+  cert:     fs.readFileSync('./certs/cert.pem', 'utf-8'),
+  key:      fs.readFileSync('./certs/privateKey-....pem', 'utf-8'),
+  ca:       caBundle,
+});
+```
+
+---
+
+## 6 · AI Supplier Evaluation
+
+> A transparent, auditable AI scoring engine that evaluates every bid across 6 weighted dimensions — including live Visa network verification — and generates a plain-English narrative.
+
+### Scoring model
+
+```mermaid
+graph LR
+    subgraph Inputs["📥 Inputs"]
+        P["💰 Bid Amount"]
+        D["🚚 Delivery Days"]
+        R["⭐ Past Performance"]
+        C["📋 Compliance\n+ Certifications"]
+        K["⚠️ Risk Score"]
+        V["🔵 Visa Match Score"]
+    end
+
+    subgraph Weights["⚖️ Default Weights"]
+        P --> W1["25% Price"]
+        D --> W2["20% Delivery"]
+        R --> W3["20% Reliability"]
+        C --> W4["15% Compliance"]
+        K --> W5["10% Risk"]
+        V --> W6["10% Visa Match"]
+    end
+
+    W1 & W2 & W3 & W4 & W5 & W6 --> COMP["🏆 Composite Score\n0 – 100"]
+    COMP --> RANK["📊 Ranked Bids + Narrative"]
+```
+
+### Code
+
+```ts
+import { SupplierMatcher, VisaNetworkService } from '@visa-gov/sdk';
+
+// Basic evaluation
+const matcher = new SupplierMatcher();
+const result  = matcher.evaluate({
+  rfp: { id: 'rfp-001', budgetCeiling: 50_000 },
+  bids,
+  suppliers,
+});
+
+console.log(result.winner.supplier.name);  // "MedEquip Co."
+console.log(result.winner.composite);      // 87
+console.log(result.narrative);
+// "MedEquip Co. leads with a composite score of 87/100,
+//  reflecting strong overall performance…"
+
+// With live Visa registry verification
+const matcher = SupplierMatcher.withVisaNetwork(VisaNetworkService.sandbox());
+const { rankedBids, winner, visaChecks } = await matcher.evaluateWithVisaCheck({
+  rfp: { id: 'rfp-001', budgetCeiling: 50_000 },
+  bids,
+  suppliers,
+  countryCode: 'US',
+});
+
+for (const sb of rankedBids) {
+  const vc = visaChecks.get(sb.supplier.id);
+  console.log(`#${sb.rank}  ${sb.supplier.name}  composite=${sb.composite}  visaScore=${sb.dimensions.visaMatchScore}  MCC=${vc?.mcc}`);
+}
+// #1  MedEquip Co.             composite=83  visaScore=95  MCC=5047
+// #2  HealthTech Supplies      composite=72  visaScore=95  MCC=5047
+// #3  BudgetMed LLC            composite=58  visaScore=0   MCC=
+
+// Custom weights (auto-normalised to sum 1.0)
+const priceFocused = SupplierMatcher.withWeights({ price: 0.50 });
+```
+
+### End-to-end `evaluateWithVisaCheck` flow
+
+```mermaid
+sequenceDiagram
+    participant App  as Your App
+    participant SM   as SupplierMatcher
+    participant VNS  as VisaNetworkService
+    participant Visa as ⚡ Visa SMS API
+
+    App->>SM: evaluateWithVisaCheck({ rfp, bids, suppliers })
+    SM->>VNS: enrichSuppliers(suppliers, 'US')
+    VNS->>Visa: bulkCheck (parallel, ≤10/batch)
+    Visa-->>VNS: matchConfidence per supplier
+    VNS-->>SM: enriched suppliers + confidenceScore
+    SM->>SM: scoreBids() with visaMatchScore injected
+    SM->>SM: generateNarrative(rankedBids)
+    SM-->>App: EvaluationResult + visaChecks Map
+```
+
+---
+
+## 7 · Visa B2B Payment Controls (VPC)
+
+> Every transaction against a virtual card is evaluated against your rule set *before* it's approved — spend velocity, merchant category, channel, location, and business hours.
+
+### Account state machine
+
+```mermaid
+stateDiagram-v2
+    [*]          --> Registered   : createAccount()
+    Registered   --> Active       : setRules()
+    Active       --> Evaluating   : Transaction attempt
+    Evaluating   --> Approved     : All rules pass ✅
+    Evaluating   --> Declined     : Rule triggered ❌
+    Active       --> Blocked      : blockAccount() [HOT]
+    Blocked      --> Active       : enableRules()
+    Active       --> Unrestricted : disableRules()
+    Unrestricted --> Active       : enableRules()
+    Approved     --> Active
+    Declined     --> Active
+```
+
+### Rule categories
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                   VPC Rule Engine                        │
+├──────────────┬───────────────────────────────────────────┤
+│ 💰 Spending  │ SPV  Spend velocity (period + auth count) │
+│              │ SPP  Max single-transaction amount        │
+│              │ VPAS Exact amount match                   │
+├──────────────┼───────────────────────────────────────────┤
+│ 🏪 Merchant  │ MCC  Allow/block by category code         │
+│              │ MCG  Allow/block by category group        │
+├──────────────┼───────────────────────────────────────────┤
+│ 📡 Channel   │ CHN  Online / POS / ATM / Contactless     │
+├──────────────┼───────────────────────────────────────────┤
+│ 🌍 Location  │ LOC  Country allow / block list           │
+├──────────────┼───────────────────────────────────────────┤
+│ 🕐 Time      │ BHR  Days of week + time range            │
+├──────────────┼───────────────────────────────────────────┤
+│ 🚫 Emergency │ HOT  Block ALL transactions instantly     │
+└──────────────┴───────────────────────────────────────────┘
+```
+
+### Code
+
+```ts
+import { VPCService } from '@visa-gov/sdk';
+
+const vpc = VPCService.sandbox();
+
+// 1 · Register the virtual card
+const account = await vpc.AccountManagement.createAccount({
+  accountNumber: '4111111111111111',
+  contacts: [{ name: 'Procurement Officer', email: 'proc@agency.gov', notifyOn: ['transaction_declined'] }],
+});
+
+// 2 · Set real-time rules
+await vpc.Rules.setRules(account.accountId, [
+  { ruleCode: 'SPV', spendVelocity: { limitAmount: 50_000, currencyCode: '840', periodType: 'monthly', maxAuthCount: 20 } },
+  { ruleCode: 'SPP', spendPolicy:   { maxTransactionAmount: 10_000, currencyCode: '840' } },
+  { ruleCode: 'MCC', mcc:           { allowedMCCs: ['5047', '5122', '8099'] } },
+  { ruleCode: 'CHN', channel:       { allowOnline: false, allowPOS: true, allowATM: false } },
+  { ruleCode: 'BHR', businessHours: { allowedDays: [1,2,3,4,5], startTime: '08:00', endTime: '18:00', timezone: 'America/New_York' } },
+]);
+
+// 3 · Emergency block / unblock
+await vpc.Rules.blockAccount(account.accountId);   // 🚫 HOT — instant block
+await vpc.Rules.enableRules(account.accountId);    // ✅ re-enable
+
+// 4 · Report on declined transactions
+const declined = await vpc.Reporting.getTransactionHistory(account.accountId, { outcome: 'declined' });
+for (const t of declined) {
+  console.log(`❌ $${t.amount} @ ${t.merchantName} — Rule: [${t.declineReason}] ${t.declineMessage}`);
+}
+```
+
+---
+
+## 8 · IPC — Intelligent Payment Controls (Gen-AI)
+
+> Describe card usage in plain English. Gen-AI translates your intent into a ready-to-apply `VPCRule[]` with a rationale and confidence score.
+
+### How it works
+
+```mermaid
+sequenceDiagram
+    participant Officer as 👤 Procurement Officer
+    participant IPC     as vpc.IPC (Gen-AI)
+    participant Visa    as ⚡ Visa VPC API
+
+    Officer->>IPC: getSuggestedRules({ prompt: "Medical procurement, $50k/mo, no ATM" })
+    IPC->>Visa: POST /vpc/v1/ipc/suggest
+    Visa-->>IPC: [ { ruleSetId, rules[], rationale, confidence } ]
+    IPC-->>Officer: IPCRuleSetResponse
+
+    Note over Officer: Review rationale + confidence score<br/>Pick the best suggestion
+
+    Officer->>IPC: setSuggestedRules(ruleSetId, accountId)
+    IPC->>Visa: POST /vpc/v1/ipc/apply
+    Visa-->>IPC: Updated VPCAccount
+    IPC-->>Officer: Rules applied ✅
+```
+
+### From prompt to rule set
+
+```
+Prompt: "Medical equipment procurement, max $50k/month, domestic, no ATM"
+                               │
+                   ┌───────────▼──────────┐
+                   │   Gen-AI Rule Engine  │
+                   │  • Category → Medical │
+                   │  • Limit    → $50,000 │
+                   │  • Channel  → no ATM  │
+                   │  • Geography→ domestic│
+                   └───────────┬──────────┘
+                               │
+          ┌────────────────────▼────────────────────┐
+          │         Suggested Rule Set               │
+          │  ruleSetId:  ipc-tpl-medical             │
+          │  confidence: 94 / 100                    │
+          │                                          │
+          │  rules:                                  │
+          │  • SPV  $50,000/month · max 50 auths     │
+          │  • MCC  allow [5047, 5122, 8099, 8049]   │
+          │  • CHN  POS=✓  Online=✓  ATM=✗           │
+          │                                          │
+          │  rationale:                              │
+          │  "Medical procurement: healthcare MCCs   │
+          │   allowed; $50,000/month; POS and        │
+          │   online; ATM blocked."                  │
+          └─────────────────────────────────────────┘
+```
+
+### Built-in sandbox templates
+
+| Keyword in prompt | Template | Confidence | Monthly limit |
+|-------------------|----------|:----------:|:-------------:|
+| `medical`, `health`, `pharma` | Medical Procurement | 94% | $50,000 |
+| `travel`, `airline`, `hotel` | Travel | 88% | $10,000 |
+| `office`, `stationery`, `supplies` | Office Supplies | 91% | $2,000 |
+| `IT`, `software`, `cloud`, `tech` | IT Services | 89% | $25,000 |
+| *(anything else)* | General Purpose | 75% | $5,000 |
+
+### Code
+
+```ts
+// Get AI-generated rule suggestions
+const { suggestions } = await vpc.IPC.getSuggestedRules({
+  prompt:       'Medical equipment procurement, max $50k per month, no ATM',
+  currencyCode: '840',
+});
+
+console.log(suggestions[0].confidence);  // 94
+console.log(suggestions[0].rationale);
+// "Medical procurement: healthcare MCCs allowed; $50,000/month; POS and online; ATM blocked."
+
+// Apply with one call — rules go live in near real-time
+await vpc.IPC.setSuggestedRules(suggestions[0].ruleSetId, account.accountId);
+```
+
+---
+
+## 9 · Settlement
+
+> After a virtual card purchase, `SettlementService` models the full Visa settlement lifecycle with streaming state for real-time UI updates.
+
+### Settlement flow
+
+```
+  Initiated ──────────────────────────────────── Settled
+     │                  │                  │         │
+     ●──────────────────●──────────────────●─────────●
+  [idle]         [authorized]       [processing]  [settled]
+    0%               33%                66%          100%
+```
+
+```mermaid
+sequenceDiagram
+    participant App  as Your App
+    participant SS   as SettlementService
+    participant Rail as 💳 Visa Rail
+
+    App->>SS: settle({ method: 'USD', orderId, amount })
+    SS->>Rail: Authorize payment
+    Rail-->>SS: authorized (33%)
+    SS->>Rail: Process settlement
+    Rail-->>SS: processing (66%)
+    SS->>Rail: Confirm settlement
+    Rail-->>SS: settled (100%)
+    SS-->>App: SettlementResult { settledAt, durationMs }
+```
+
+### Code
+
+```ts
+import { SettlementService } from '@visa-gov/sdk';
+
+const service = new SettlementService();
+
+// Automated (fire-and-forget)
+const result = await service.settle({ method: 'USD', orderId: 'ORD-001', amount: 48_500 });
+console.log(`Settled in ${result.durationMs}ms at ${result.settledAt}`);
+
+// Streaming (real-time UI updates)
+const session = service.initiate({ method: 'Card', orderId: 'ORD-002', amount: 12_000 });
+
+for await (const state of session.stream(1_500)) {  // 1.5s per step
+  console.log(`${state.progress}% — ${state.currentStep}`);
+  updateProgressBar(state.progress);
+}
+// 33% — authorized
+// 66% — processing
+// 100% — settled
+```
 
 ---
 
