@@ -35,7 +35,7 @@ The SDK ships a first-class **MCP server** that exposes all 20 capabilities to A
 </td>
 <td valign="top" width="50%">
 
-### 🏗️ TypeScript SDK — Full Developer Control
+### 🏗️ SDK — Full Developer Control
 For teams that need to embed Visa B2B payment capabilities directly into **existing ERP, AP, or procurement systems**, the SDK provides clean, typed service classes for every API — VCN, VPA, BIP/SIP, VPC, SMS, AI scoring, and settlement — all backed by mTLS-secured Visa rails.
 
 **Integrates with:** Node.js · TypeScript · Any backend stack
