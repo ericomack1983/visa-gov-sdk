@@ -2,7 +2,7 @@
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=1A1F71&height=140&section=header&text=%40visa-gov%2Fsdk&fontSize=48&fontColor=FFFFFF&animation=fadeIn&fontAlignY=42&desc=AI-Powered%20Government%20Procurement%20on%20Visa%20Rails&descAlignY=66&descSize=17&descColor=C8D4FF" width="100%"/>
 
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&pause=1200&color=1A1F71&center=true&vCenter=true&width=620&lines=Issue+virtual+cards+with+embedded+rules;Score+suppliers+with+6-dimension+AI;Real-time+payment+controls+on+every+card;Natural+language+%E2%86%92+payment+rules+(IPC+Gen-AI);From+discovery+to+settlement+in+one+SDK;20+tools+via+MCP+%E2%80%94+now+with+dedicated+B2B+AP+server" alt="Typing animation" />
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&pause=1200&color=1A1F71&center=true&vCenter=true&width=720&lines=Issue+virtual+cards+with+embedded+rules;Score+suppliers+with+6-dimension+AI;Real-time+payment+controls+on+every+card;Natural+language+%E2%86%92+payment+rules+(IPC+Gen-AI);From+discovery+to+settlement+in+one+SDK;%F0%9F%A4%96+MCP+Server+%E2%80%94+20+tools+over+natural+language;Drop-in+B2B+AP+agent+for+any+procurement+system" alt="Typing animation" />
 
 <br/>
 
@@ -20,15 +20,47 @@
 
 ## What is this?
 
-Government procurement is slow, opaque, and expensive. This SDK wires the full Visa B2B payment infrastructure into a single TypeScript package — letting agencies go from **discovering a supplier** to **settling a payment** in one coherent flow, with AI-powered scoring and real-time payment controls at every step.
+Government procurement is slow, opaque, and expensive. **`@visa-gov/sdk`** wires the full Visa B2B payment infrastructure into a single TypeScript package — letting agencies go from **discovering a supplier** to **settling a payment** in one coherent flow, with AI-powered scoring and real-time payment controls at every step.
 
-The SDK ships with a built-in **MCP server** that exposes all 20 capabilities to AI agents (Claude Code, Claude Desktop, Cursor, and any other MCP-compatible client) over natural language, with built-in guardrails on every money-moving operation.
+<div align="center">
+<table>
+<tr>
+<td valign="top" width="50%">
+
+### 🤖 MCP Server — AI Agents, Zero Code
+The SDK ships a first-class **MCP server** that exposes all 20 capabilities to AI agents over natural language. No code, no API integration — just describe the procurement action and the agent executes it, with two-phase guardrails on every money-moving tool.
+
+**Works with:** Claude Code · Claude Desktop · Cursor · any MCP client
+
+</td>
+<td valign="top" width="50%">
+
+### 🏗️ TypeScript SDK — Full Developer Control
+For teams that need to embed Visa B2B payment capabilities directly into **existing ERP, AP, or procurement systems**, the SDK provides clean, typed service classes for every API — VCN, VPA, BIP/SIP, VPC, SMS, AI scoring, and settlement — all backed by mTLS-secured Visa rails.
+
+**Integrates with:** Node.js · TypeScript · Any backend stack
+
+</td>
+</tr>
+</table>
+</div>
 
 <div align="center">
 
 ```
-  🏛️ Agency                                              Visa Network
-  ────────────────────────────────────────────────────────────────────
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║           Two ways to access the same Visa B2B power            ║
+  ╠══════════════════════════════════════════════╦═══════════════════╣
+  ║  🤖  MCP Server  (AI-native)                 ║  🏗️  TypeScript   ║
+  ║  ─────────────────────────────────────────   ║  SDK  (code)      ║
+  ║  "Check if MedEquip Co. is on Visa"          ║                   ║
+  ║  "Issue a card, $50k, medical MCCs only"     ║  VisaNetworkSvc   ║
+  ║  "Approve invoice INV-2026-042"              ║  VCNService       ║
+  ║  "Settle to supplier, run in background"     ║  B2BPaymentSvc    ║
+  ║  ── 20 tools · two-phase guardrails ──       ║  SettlementSvc    ║
+  ╚══════════════════════════════════════════════╩═══════════════════╝
+                              │
+                              ▼
   Discover suppliers ──▶ AI score + Visa verification
          │
          ▼
@@ -42,9 +74,6 @@ The SDK ships with a built-in **MCP server** that exposes all 20 capabilities to
          │
          ▼
   Settle on Visa rails ──▶ USD · Card  |  streaming state for UI
-         │
-         ▼
-  🤖 MCP Server ──▶ All of the above via natural language + guardrails
 ```
 
 </div>
@@ -139,18 +168,22 @@ node run-tests.js --help    # full usage reference
 
 ## Feature Guide
 
+<div align="center">
+
 | # | Feature | What it does | Real API |
 |:-:|---------|-------------|:-------:|
-| [1](#1--b2b-virtual-account-payments) | **B2B Virtual Account Payments** | Issue virtual cards with embedded spending rules | `POST /vpa/v1/cards/provisioning` |
-| [2](#2--full-vpa-account-management) | **Full VPA Account Management** | Buyers, funding accounts, proxy pools, suppliers, payments | `/vpa/v1/*` |
-| [3](#3--bip--sip-payment-flows) | **BIP & SIP Payment Flows** | Buyer-initiated and supplier-initiated B2B flows | `POST /vpa/v1/paymentService/*` |
-| [4](#4--visa-supplier-match-service-sms) | **Visa Supplier Match Service** | Verify suppliers on the Visa network, get confidence score | `POST /visasuppliermatchingservice/v1/search` |
-| [5](#5--ai-supplier-evaluation) | **AI Supplier Evaluation** | Score & rank bids across 6 weighted dimensions | SDK-internal |
-| [6](#6--visa-b2b-payment-controls-vpc) | **Visa B2B Payment Controls** | Real-time spending rules on every virtual card | `/vpc/v1/*` |
-| [7](#7--ipc--intelligent-payment-controls-gen-ai) | **IPC — Gen-AI Rules** | Natural language → payment control rules | `POST /vpc/v1/ipc/suggest` |
-| [8](#8--settlement) | **Settlement** | Multi-rail payment settlement with streaming | SDK-internal |
-| [9](#9--mcp-server--ai-agent-interface) | **MCP Server** | All 20 capabilities exposed to AI agents via natural language + guardrails | stdio transport |
-| [10](#10--b2b-ap-agent-mcp-server) | **B2B AP Agent MCP Server** | Dedicated server for AP workflow agents — BIP, SIP, guardrails, live Resources | stdio transport |
+| **[🤖 9](#9--mcp-server--ai-agent-interface)** | **MCP Server** ⭐ | **20 tools over natural language — full procurement lifecycle, no code** | **stdio transport** |
+| **[🤖 10](#10--b2b-ap-agent-mcp-server)** | **B2B AP Agent MCP Server** ⭐ | **Dedicated AP workflow agent — BIP, SIP, live Resources, drop-in for any ERP** | **stdio transport** |
+| [1](#1--b2b-virtual-account-payments) | B2B Virtual Account Payments | Issue virtual cards with embedded spending rules | `POST /vpa/v1/cards/provisioning` |
+| [2](#2--full-vpa-account-management) | Full VPA Account Management | Buyers, funding accounts, proxy pools, suppliers, payments | `/vpa/v1/*` |
+| [3](#3--bip--sip-payment-flows) | BIP & SIP Payment Flows | Buyer-initiated and supplier-initiated B2B flows | `POST /vpa/v1/paymentService/*` |
+| [4](#4--visa-supplier-match-service-sms) | Visa Supplier Match Service | Verify suppliers on the Visa network, get confidence score | `POST /visasuppliermatchingservice/v1/search` |
+| [5](#5--ai-supplier-evaluation) | AI Supplier Evaluation | Score & rank bids across 6 weighted dimensions | SDK-internal |
+| [6](#6--visa-b2b-payment-controls-vpc) | Visa B2B Payment Controls | Real-time spending rules on every virtual card | `/vpc/v1/*` |
+| [7](#7--ipc--intelligent-payment-controls-gen-ai) | IPC — Gen-AI Rules | Natural language → payment control rules | `POST /vpc/v1/ipc/suggest` |
+| [8](#8--settlement) | Settlement | Multi-rail payment settlement with streaming | SDK-internal |
+
+</div>
 
 ---
 
@@ -851,9 +884,46 @@ for await (const state of session.stream(1_500)) {  // 1.5s per step
 
 ## 9 · MCP Server — AI Agent Interface
 
+<div align="center">
+
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&pause=1000&color=7C3AED&center=true&vCenter=true&width=720&lines=20+tools+%E2%80%94+zero+code+required;Natural+language+%E2%86%92+virtual+card+issued+in+seconds;Two-phase+guardrails+on+every+money-moving+operation;Wire+into+Claude+Desktop%2C+Cursor%2C+or+any+MCP+client;Full+procurement+lifecycle+%E2%80%94+one+conversation" alt="MCP typing animation" />
+
+</div>
+
+<div align="center">
+<table>
+<tr>
+<td align="center" width="25%">
+
+**🤖 AI-Native**<br/>
+Every SDK capability exposed as a natural-language tool. No API docs, no JSON — just describe what you need.
+
+</td>
+<td align="center" width="25%">
+
+**🔒 Guardrail-Protected**<br/>
+Three money-moving tools require explicit confirmation. Two-phase tokens prevent replay attacks and double-issuance.
+
+</td>
+<td align="center" width="25%">
+
+**⚡ Zero-Plumbing**<br/>
+One `npm run build:mcp` and a single `claude mcp add` command. Sandbox mode works with no credentials.
+
+</td>
+<td align="center" width="25%">
+
+**🔌 Universal**<br/>
+Works with Claude Code, Claude Desktop, Cursor, and any MCP-compatible client over stdio transport.
+
+</td>
+</tr>
+</table>
+</div>
+
 > Every SDK capability is available to AI agents as a natural-language tool, with built-in two-phase guardrails on every operation that issues real cards or moves money.
 
-The MCP server is part of the SDK — no separate package. Build it once and wire it into any MCP-compatible client in seconds.
+The MCP server ships **inside the SDK** — no separate package, no additional dependencies. Build it once and wire it into any MCP-compatible client in seconds.
 
 ### Quick install
 
@@ -1011,6 +1081,14 @@ A complete card issuance in three natural-language calls. No code required.
 ```
 
 The token is consumed on use — passing it a second time returns an error, preventing accidental double-issuance.
+
+### Live session recording
+
+<div align="center">
+  <img src="./claude_pay_demo.gif" alt="Claude Pay — MCP card issuance live session" width="820" style="border-radius:12px;border:2px solid #7C3AED;box-shadow:0 8px 32px rgba(124,58,237,0.35);" />
+  <br/>
+  <sub>Full government procurement flow — supplier verification → virtual card issuance → payment — via natural language in Claude Desktop</sub>
+</div>
 
 ### Environment variables
 
@@ -1287,6 +1365,111 @@ node helloworld.js
 | `vpa_process_payment` | — | `vpaService.Payment.processPayment()` |
 
 </details>
+
+---
+
+## SDK Beyond the MCP Server — Direct Integration for Procurement Systems
+
+> The MCP server is the fastest path to AI-native procurement. But for teams with **existing ERP, AP, or procurement platforms**, the TypeScript SDK gives you the same Visa B2B capabilities as composable service classes — drop them into your backend without changing your architecture.
+
+<div align="center">
+<table>
+<tr>
+<th align="left" width="33%">Challenge</th>
+<th align="left" width="33%">Without the SDK</th>
+<th align="left" width="33%">With `@visa-gov/sdk`</th>
+</tr>
+<tr>
+<td>Supplier verification</td>
+<td>Manual Visa portal lookup, days of back-and-forth</td>
+<td><code>visa.bulkCheck(suppliers)</code> — parallel, scored, in one call</td>
+</tr>
+<tr>
+<td>Virtual card issuance</td>
+<td>Custom Visa API integration, cert management, rule serialization</td>
+<td><code>vcn.requestVirtualCard(payload)</code> with typed rule builders</td>
+</tr>
+<tr>
+<td>Payment controls</td>
+<td>Separate VPC API integration per card account</td>
+<td><code>vpc.Rules.setRules()</code> or natural language via IPC Gen-AI</td>
+</tr>
+<tr>
+<td>B2B payment initiation</td>
+<td>BIP/SIP protocol differences, state machine management</td>
+<td><code>b2b.BIP.initiate()</code> / <code>b2b.SIP.approve()</code> with typed flows</td>
+</tr>
+<tr>
+<td>mTLS authentication</td>
+<td>Manual cert/key wiring per service</td>
+<td><code>createMtlsFetch()</code> — one call, pre-authenticated fetch</td>
+</tr>
+<tr>
+<td>AI agent integration</td>
+<td>Custom tool definitions, guardrail logic, transport plumbing</td>
+<td><code>npm run build:mcp</code> + one <code>claude mcp add</code> command</td>
+</tr>
+</table>
+</div>
+
+### Integration patterns
+
+**Drop-in service class** — add Visa supplier verification to an existing procurement endpoint:
+```ts
+import { VisaNetworkService } from '@visa-gov/sdk';
+
+// Existing endpoint — just add one enrichment step
+router.post('/rfp/evaluate', async (req, res) => {
+  const { bids, suppliers } = req.body;
+
+  // Drop in: enrich all suppliers with live Visa data
+  const visa     = VisaNetworkService.sandbox();      // swap for live creds
+  const enriched = await visa.enrichSuppliers(suppliers, 'US');
+
+  // Existing scoring logic receives Visa match scores automatically
+  res.json(await yourExistingScorer.rank(bids, enriched));
+});
+```
+
+**Extend an AP workflow** — wire BIP/SIP into an existing invoice approval flow:
+```ts
+import { B2BPaymentService } from '@visa-gov/sdk';
+
+// Existing AP approval handler
+async function onInvoiceApproved(invoice: Invoice) {
+  const b2b = B2BPaymentService.sandbox();
+
+  // Provision a virtual card locked to this invoice — no change to your approval logic
+  const payment = await b2b.BIP.initiate({
+    messageId:     crypto.randomUUID(),
+    clientId:      process.env.CLIENT_ID!,
+    buyerId:       invoice.buyerId,
+    supplierId:    invoice.supplierId,
+    paymentAmount: invoice.amount,
+    currencyCode:  '840',
+    invoiceNumber: invoice.id,
+  });
+
+  await notifySupplier(invoice.supplierEmail, payment.paymentDetailUrl);
+}
+```
+
+**Embed real-time card controls** — apply spend policies programmatically:
+```ts
+import { VPCService } from '@visa-gov/sdk';
+
+// Called from your card lifecycle hook
+async function configureCardOnIssuance(accountNumber: string, policy: SpendPolicy) {
+  const vpc     = VPCService.sandbox();
+  const account = await vpc.AccountManagement.createAccount({ accountNumber });
+
+  await vpc.Rules.setRules(account.accountId, [
+    { ruleCode: 'SPV', spendVelocity: { limitAmount: policy.monthlyLimit, currencyCode: '840', periodType: 'monthly', maxAuthCount: policy.maxTransactions } },
+    { ruleCode: 'MCC', mcc: { allowedMCCs: policy.allowedCategories } },
+    { ruleCode: 'CHN', channel: { allowOnline: policy.allowOnline, allowPOS: true, allowATM: false } },
+  ]);
+}
+```
 
 ---
 
